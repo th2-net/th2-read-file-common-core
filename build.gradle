@@ -1,0 +1,157 @@
+plugins {
+    id 'java-library'
+    id 'org.jetbrains.kotlin.jvm' version '1.4.32'
+    id 'maven-publish'
+    id "io.github.gradle-nexus.publish-plugin" version "1.0.0"
+    id 'signing'
+}
+
+group 'com.exactpro.th2'
+version release_version
+
+ext {
+    java_version = JavaVersion.VERSION_11
+}
+
+configurations.all {
+    resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
+    resolutionStrategy.cacheDynamicVersionsFor 0, 'seconds'
+}
+
+java {
+    sourceCompatibility = java_version
+    targetCompatibility = java_version
+    withSourcesJar()
+}
+
+compileKotlin {
+    kotlinOptions.jvmTarget = java_version.toString()
+}
+
+compileTestKotlin {
+    kotlinOptions.jvmTarget = java_version.toString()
+}
+
+dependencies {
+    api platform('com.exactpro.th2:bom:2.10.2')
+
+    api 'com.exactpro.th2:grpc-common:3.1.1'
+
+    implementation 'com.google.guava:guava'
+    implementation "org.jetbrains.kotlin:kotlin-stdlib"
+
+    implementation 'io.github.microutils:kotlin-logging:1.7.9'
+
+    implementation "org.slf4j:slf4j-log4j12"
+    implementation "org.slf4j:slf4j-api"
+
+    testImplementation 'org.apache.commons:commons-lang3:3.12.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.7.0'
+    testImplementation 'io.strikt:strikt-jvm:0.30.1'
+    testImplementation 'org.mockito.kotlin:mockito-kotlin:3.1.0'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+jar {
+    manifest {
+        attributes(
+                'Created-By':               "${System.getProperty('java.version')} (${System.getProperty('java.vendor')})",
+                'Specification-Title':      '',
+                'Specification-Vendor':     'Exactpro Systems LLC',
+                'Implementation-Title':     project.archivesBaseName,
+                'Implementation-Vendor':    'Exactpro Systems LLC',
+                'Implementation-Vendor-Id': 'com.exactpro',
+                'Implementation-Version':   project.version
+        )
+    }
+}
+
+// conditionals for publications
+tasks.withType(PublishToMavenRepository) {
+    onlyIf {
+        (repository == publishing.repositories.nexusRepository &&
+                project.hasProperty('nexus_user') &&
+                project.hasProperty('nexus_password') &&
+                project.hasProperty('nexus_url')) ||
+                (repository == publishing.repositories.sonatype &&
+                        project.hasProperty('sonatypeUsername') &&
+                        project.hasProperty('sonatypePassword')) ||
+                (repository == publishing.repositories.localRepo)
+    }
+}
+tasks.withType(Sign) {
+    onlyIf { project.hasProperty('signingKey') &&
+            project.hasProperty('signingPassword')
+    }
+}
+// disable running task 'initializeSonatypeStagingRepository' on a gitlab
+tasks.whenTaskAdded {task ->
+    if(task.name.equals('initializeSonatypeStagingRepository') &&
+            !(project.hasProperty('sonatypeUsername') && project.hasProperty('sonatypePassword'))
+    ) {
+        task.enabled = false
+    }
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from(components.java)
+            pom {
+                name = rootProject.name
+                packaging = 'jar'
+                description = rootProject.description
+                url = vcs_url
+                scm {
+                    url = vcs_url
+                }
+                licenses {
+                    license {
+                        name = 'The Apache License, Version 2.0'
+                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'developer'
+                        name = 'developer'
+                        email = 'developer@exactpro.com'
+                    }
+                }
+                scm {
+                    url = vcs_url
+                }
+            }
+        }
+    }
+    repositories {
+        //Nexus repo to publish from gitlab
+        maven {
+            name = 'nexusRepository'
+            credentials {
+                username = project.findProperty('nexus_user')
+                password = project.findProperty('nexus_password')
+            }
+            url = project.findProperty('nexus_url')
+        }
+    }
+}
+
+nexusPublishing {
+    repositories {
+        sonatype {
+            nexusUrl.set(uri("https://s01.oss.sonatype.org/service/local/"))
+            snapshotRepositoryUrl.set(uri("https://s01.oss.sonatype.org/content/repositories/snapshots/"))
+        }
+    }
+}
+
+signing {
+    def signingKey = findProperty("signingKey")
+    def signingPassword = findProperty("signingPassword")
+    useInMemoryPgpKeys(signingKey, signingPassword)
+    sign publishing.publications.mavenJava
+}

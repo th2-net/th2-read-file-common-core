@@ -1,0 +1,9 @@
+# Gradle
+build/
+.gradle/
+
+# IntelliJ
+.idea/
+out/
+!.idea/copyright/profiles_settings.xml
+!.idea/copyright/th2.xml

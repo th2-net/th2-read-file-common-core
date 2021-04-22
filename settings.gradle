@@ -1,0 +1,22 @@
+import org.gradle.api.initialization.resolve.RepositoriesMode
+
+rootProject.name = 'read-file-common-core'
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        mavenCentral()
+        maven {
+            name 'Sonatype_snapshots'
+            url 'https://s01.oss.sonatype.org/content/repositories/snapshots/'
+        }
+        maven {
+            name 'Sonatype_releases'
+            url 'https://s01.oss.sonatype.org/content/repositories/releases/'
+        }
+        maven {
+            name 'TH2 Bintray'
+            url 'https://dl.bintray.com/exactpro/th2'
+        }
+    }
+}
