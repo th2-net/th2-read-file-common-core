@@ -54,8 +54,8 @@ class TestManualReader : AbstractFileTest() {
         dir,
         idExtractor,
         LAST_MODIFICATION_TIME_COMPARATOR
-            .thenComparing { path -> path.nameParts().last().toInt() }
-    ) { it.fileName.extension == "txt" }
+            .thenComparing { path -> path.nameParts()[1].split('.', limit = 2)[0].toInt() }
+    )/* { it.fileName.extension == "txt" }*/
 
     private lateinit var reader: AbstractFileReader<BufferedReader>
     private lateinit var executor: ScheduledExecutorService
@@ -70,13 +70,15 @@ class TestManualReader : AbstractFileTest() {
         )
         dir.toFile().deleteRecursively()
         Files.createDirectory(dir)
+
+        val movedFileTracker = MovedFileTracker(dir)
         reader = TestLineReader(
             configuration,
             checker,
-            LineParser()
+            LineParser(),
         ) { streamId, list ->
             LOGGER.info { "Published: streamID: $streamId; data: $list" }
-        }
+        }.apply { init(movedFileTracker) }
         executor = Executors.newSingleThreadScheduledExecutor()
 
         future = executor.scheduleWithFixedDelay(reader::processUpdates, 0, 5, TimeUnit.SECONDS)
@@ -84,7 +86,7 @@ class TestManualReader : AbstractFileTest() {
 
     @AfterEach
     internal fun tearDown() {
-        future.cancel(true)
+        future.cancel(false)
         executor.shutdown()
         if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
             LOGGER.warn { "Executor was not shutdown" }
@@ -134,6 +136,25 @@ class TestManualReader : AbstractFileTest() {
                 }
                 appendTo(file, RandomStringUtils.randomAlphabetic(50, 100), lfInEnd = true)
                 data.lineAdded(linePerFileLimit)
+            }
+            Thread.sleep(random.nextLong(10, 100))
+        }
+    }
+
+    @Test
+    fun `manual log generation`() {
+        val logFile = createFile(dir, "log-0.log")
+        val random = Random(System.currentTimeMillis())
+        var copy: Int = 0
+        var linesInFile = 0
+        val linesPerFile = 100
+        repeat(1000) {
+            linesInFile++
+            appendTo(logFile, "log-line-$it:${RandomStringUtils.randomAlphabetic(50, 100)}", lfInEnd = true)
+            if (linesInFile >= linesPerFile) {
+                linesInFile = 0
+                Files.move(logFile, logFile.resolveSibling("log-0.log.${copy++}"))
+                Files.createFile(logFile)
             }
             Thread.sleep(random.nextLong(10, 100))
         }

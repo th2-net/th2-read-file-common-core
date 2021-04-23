@@ -27,18 +27,25 @@ import org.junit.jupiter.api.assertTimeoutPreemptively
 import org.junit.jupiter.api.io.TempDir
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atMost
 import org.mockito.kotlin.clearInvocations
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.spy
+import org.mockito.kotlin.timeout
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyZeroInteractions
 import strikt.api.expectThat
+import strikt.assertions.all
+import strikt.assertions.allIndexed
 import strikt.assertions.get
 import strikt.assertions.hasSize
 import strikt.assertions.isEqualTo
 import java.io.BufferedReader
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 internal class TestAbstractFileReader : AbstractFileTest() {
 
@@ -67,12 +74,13 @@ internal class TestAbstractFileReader : AbstractFileTest() {
                 .thenComparing { path -> path.nameParts().last().toInt() }
         )
 
+        val movedFileTracker = MovedFileTracker(dir)
         reader = TestLineReader(
             configuration,
             directoryChecker,
             parser,
-            onStreamData
-        )
+            onStreamData,
+        ).apply { init(movedFileTracker) }
     }
 
     @AfterEach
@@ -100,6 +108,8 @@ internal class TestAbstractFileReader : AbstractFileTest() {
             .apply {
                 get(0).get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 1")
                 get(1).get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 2")
+
+                all { get { metadata }.get { id }.get { connectionId }.get { sessionAlias }.isEqualTo("A") }
             }
     }
 
@@ -133,6 +143,8 @@ internal class TestAbstractFileReader : AbstractFileTest() {
                 get(1).get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 2")
                 get(2).get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 3")
                 get(3).get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 4")
+
+                all { get { metadata }.get { id }.get { connectionId }.get { sessionAlias }.isEqualTo("A") }
             }
         clearInvocations(onStreamData)
 
@@ -155,7 +167,44 @@ internal class TestAbstractFileReader : AbstractFileTest() {
         expectThat(secondCaptor.allValues.flatten())
             .hasSize(1)
             .apply {
-                get(0).get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 5")
+                get(0).apply {
+                    get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 5")
+                    get { metadata }.get { id }.get { connectionId }.get { sessionAlias }.isEqualTo("A")
+                }
             }
+    }
+
+    @Test
+    internal fun `reads data from log rotation pattern`() {
+        val exec = Executors.newSingleThreadScheduledExecutor()
+        try {
+            exec.scheduleWithFixedDelay(reader::processUpdates, 0, 1, TimeUnit.SECONDS)
+
+            val logFile = createFile(dir, "log-0.log")
+            val times = 20
+            repeat(times) {
+                appendTo(logFile, "log-$it", lfInEnd = true)
+                Thread.sleep(10)
+            }
+            Files.move(logFile, logFile.resolveSibling("log-0.old"))
+            Files.createFile(logFile)
+            repeat(times) {
+                appendTo(logFile, "log-${it + times}", lfInEnd = true)
+                Thread.sleep(10)
+            }
+
+            val argumentCaptor = argumentCaptor<List<RawMessage.Builder>>()
+            verify(onStreamData, timeout(configuration.maxPublicationDelay.plus(staleTimeout).toMillis()).times(1)).invoke(any(), argumentCaptor.capture())
+            expectThat(argumentCaptor.allValues.flatten())
+                .hasSize(times * 2)
+                .apply {
+                    allIndexed { index ->
+                        get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("log-$index")
+                    }
+                    all { get { metadata }.get { id }.get { connectionId }.get { sessionAlias }.isEqualTo("log") }
+                }
+        } finally {
+            exec.shutdown()
+        }
     }
 }

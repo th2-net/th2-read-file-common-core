@@ -18,6 +18,7 @@ package com.exactpro.th2.read.file.common
 
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
+import com.exactpro.th2.read.file.common.extensions.attributes
 import com.exactpro.th2.read.file.common.impl.BufferedReaderSourceWrapper
 import java.io.BufferedReader
 import java.nio.file.Files
@@ -28,7 +29,7 @@ class TestLineReader(
     configuration: CommonFileReaderConfiguration,
     directoryChecker: DirectoryChecker,
     contentParser: ContentParser<BufferedReader>,
-    onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit
+    onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit,
 ) : AbstractFileReader<BufferedReader>(
     configuration,
     directoryChecker,
@@ -39,6 +40,7 @@ class TestLineReader(
 
     override fun acceptFile(streamId: StreamId, currentFile: Path?, newFile: Path): Boolean =
         currentFile == null
+            || Files.notExists(currentFile)
             || currentFile.attributes.creationTime() <= newFile.attributes.creationTime()
 
     override fun createSource(streamId: StreamId, path: Path): FileSourceWrapper<BufferedReader> =
