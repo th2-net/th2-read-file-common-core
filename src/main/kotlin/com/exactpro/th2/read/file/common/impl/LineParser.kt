@@ -21,8 +21,13 @@ import com.exactpro.th2.read.file.common.ContentParser
 import com.exactpro.th2.read.file.common.StreamId
 import com.google.protobuf.ByteString
 import java.io.BufferedReader
+import java.util.function.BiPredicate
+import java.util.function.Function
 
-class LineParser : ContentParser<BufferedReader> {
+class LineParser @JvmOverloads constructor(
+    private val filter: BiPredicate<StreamId, String> = BiPredicate { _, _ -> true },
+    private val transformer: Function<String, String> = Function { it }
+) : ContentParser<BufferedReader> {
 
     override fun canParse(streamId: StreamId, source: BufferedReader, considerNoFutureUpdates: Boolean): Boolean {
         val nextLine: String? = source.readLine()
@@ -34,10 +39,10 @@ class LineParser : ContentParser<BufferedReader> {
 
     override fun parse(streamId: StreamId, source: BufferedReader): Collection<RawMessage.Builder> {
         val readLine = source.readLine()
-        return if (readLine == null) {
+        return if (readLine == null || !filter.test(streamId, readLine)) {
             emptyList()
         } else {
-            listOf(RawMessage.newBuilder().setBody(ByteString.copyFrom(readLine.toByteArray(Charsets.UTF_8))))
+            listOf(RawMessage.newBuilder().setBody(ByteString.copyFrom(readLine.let(transformer::apply).toByteArray(Charsets.UTF_8))))
         }
     }
 
