@@ -41,7 +41,7 @@ internal class TestDirectoryChecker : AbstractFileTest() {
         val directoryChecker = DirectoryChecker(
             dest,
             { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } },
-            LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() }
+            { it.sortWith(LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() }) }
         )
         expectThat(directoryChecker.check())
             .isNotEmpty()
@@ -58,7 +58,7 @@ internal class TestDirectoryChecker : AbstractFileTest() {
         val directoryChecker = DirectoryChecker(
             dest,
             { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } },
-            LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() },
+            { it.sortWith(LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() }) },
             { path -> path.fileName.toString().contains("streamA") }
         )
         expectThat(directoryChecker.check())
@@ -75,7 +75,7 @@ internal class TestDirectoryChecker : AbstractFileTest() {
         val directoryChecker = DirectoryChecker(
             dest,
             { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } },
-            LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() }
+            { it.sortWith(LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() }) }
         )
 
         val filterPath = { _: StreamId, path: Path -> path.nameParts().last().toInt() > 1 }
@@ -95,7 +95,7 @@ internal class TestDirectoryChecker : AbstractFileTest() {
         val directoryChecker = DirectoryChecker(
             dest,
             { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } },
-            LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() }
+            { it.sortWith(LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() }) }
         )
 
         val filterPath = { _: StreamId, path: Path -> path.nameParts().last().toInt() > 1 }

@@ -20,6 +20,7 @@ import mu.KotlinLogging
 import java.nio.file.FileVisitOption
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.function.Consumer
 import java.util.stream.Collectors
 
 class DirectoryChecker(
@@ -29,12 +30,20 @@ class DirectoryChecker(
      * Extracts the [StreamId] from file name. If `null` the file will be skipped
      */
     private val streamIdExtractor: (Path) -> StreamId?,
+
     /**
      * Will be used to sort the files mapped to the same [StreamId]
      */
-    private val streamFileComparator: Comparator<Path>,
+    private val streamFileReorder: Consumer<MutableList<Path>>,
     private val filter: (Path) -> Boolean = { true }
 ) {
+    constructor(
+        directory: Path,
+        streamFileComparator: Comparator<Path>,
+        streamIdExtractor: (Path) -> StreamId?,
+        filter: (Path) -> Boolean = { true }
+    ) : this(directory, streamIdExtractor, Consumer { it.sortWith(streamFileComparator) }, filter)
+
     /**
      * @return the list of files that are in the [directory]
      * and matches the [filter]
@@ -59,7 +68,7 @@ class DirectoryChecker(
         return hashMapOf<StreamId, Path>().also { dest ->
             filesByStreamId.forEach { (streamId, files) ->
                 files.apply {
-                    sortWith(streamFileComparator)
+                    streamFileReorder.accept(this)
                 }.firstOrNull {
                     nextForStream(streamId, it)
                 }?.also { dest[streamId] = it }

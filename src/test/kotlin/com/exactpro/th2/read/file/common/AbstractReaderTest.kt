@@ -45,8 +45,8 @@ abstract class AbstractReaderTest : AbstractFileTest() {
         directoryChecker = DirectoryChecker(
             dir,
             { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } },
-            LAST_MODIFICATION_TIME_COMPARATOR
-                .thenComparing { path -> path.nameParts().last().toInt() }
+            { it.sortWith(LAST_MODIFICATION_TIME_COMPARATOR
+                .thenComparing { path -> path.nameParts().last().toInt() }) }
         )
 
         val movedFileTracker = MovedFileTracker(dir)
