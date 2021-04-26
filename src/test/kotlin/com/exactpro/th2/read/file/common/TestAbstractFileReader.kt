@@ -16,77 +16,33 @@
 
 package com.exactpro.th2.read.file.common
 
-import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
-import com.exactpro.th2.read.file.common.impl.LineParser
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.BeforeEach
+import com.exactpro.th2.read.file.common.extensions.toTimestamp
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
-import org.junit.jupiter.api.io.TempDir
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
-import org.mockito.kotlin.atMost
 import org.mockito.kotlin.clearInvocations
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.spy
+import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.never
 import org.mockito.kotlin.timeout
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyZeroInteractions
+import org.mockito.kotlin.whenever
 import strikt.api.expectThat
 import strikt.assertions.all
 import strikt.assertions.allIndexed
 import strikt.assertions.get
 import strikt.assertions.hasSize
 import strikt.assertions.isEqualTo
-import java.io.BufferedReader
 import java.nio.file.Files
-import java.nio.file.Path
 import java.time.Duration
+import java.time.Instant
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-internal class TestAbstractFileReader : AbstractFileTest() {
-
-    @TempDir
-    lateinit var dir: Path
-
-    private val staleTimeout = Duration.ofSeconds(1)
-    private val parser: ContentParser<BufferedReader> = spy(LineParser())
-    private val onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit = mock { }
-    private val configuration = CommonFileReaderConfiguration(
-        staleTimeout = staleTimeout,
-        maxPublicationDelay = staleTimeout.multipliedBy(2),
-        leaveLastFileOpen = true
-    )
-
-    private lateinit var reader: AbstractFileReader<BufferedReader>
-
-    private lateinit var directoryChecker: DirectoryChecker
-
-    @BeforeEach
-    internal fun setUp() {
-        directoryChecker = DirectoryChecker(
-            dir,
-            { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } },
-            LAST_MODIFICATION_TIME_COMPARATOR
-                .thenComparing { path -> path.nameParts().last().toInt() }
-        )
-
-        val movedFileTracker = MovedFileTracker(dir)
-        reader = TestLineReader(
-            configuration,
-            directoryChecker,
-            parser,
-            onStreamData,
-        ).apply { init(movedFileTracker) }
-    }
-
-    @AfterEach
-    internal fun tearDown() {
-        reader.close()
-    }
+internal class TestAbstractFileReader : AbstractReaderTest() {
 
     @Test
     internal fun `publishes all data on close`() {
@@ -206,5 +162,47 @@ internal class TestAbstractFileReader : AbstractFileTest() {
         } finally {
             exec.shutdown()
         }
+    }
+
+    @Test
+    internal fun `stops reading data for stream when it fails the validation`() {
+        doReturn(true).whenever(parser).canParse(any(), any(), any())
+        val now = Instant.now()
+        doReturn(
+            listOf(
+                RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.toTimestamp() },
+                RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.minusSeconds(1).toTimestamp() }
+            )
+        ).whenever(parser).parse(any(), any())
+
+        createFile(dir, "A-0").also {
+            appendTo(it, "Line", lfInEnd = true)
+        }
+        assertTimeoutPreemptively(configuration.staleTimeout.plusMillis(200)) {
+            reader.processUpdates()
+        }
+        verify(parser).canParse(any(), any(), any())
+        verify(parser).parse(any(), any())
+        verify(onStreamData, never()).invoke(any(), any())
+
+        clearInvocations(parser)
+
+        createFile(dir, "A-1").also {
+            appendTo(it, "line")
+        }
+
+        assertTimeoutPreemptively(configuration.staleTimeout) {
+            reader.processUpdates()
+        }
+
+        verifyZeroInteractions(parser, onStreamData)
+    }
+
+    override fun createConfiguration(staleTimeout: Duration): CommonFileReaderConfiguration {
+        return CommonFileReaderConfiguration(
+            staleTimeout = staleTimeout,
+            maxPublicationDelay = staleTimeout.multipliedBy(2),
+            leaveLastFileOpen = true,
+        )
     }
 }

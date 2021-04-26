@@ -27,6 +27,11 @@ class CommonFileReaderConfiguration(
      * Do not close the last file for stream ID until the new one is not found or the reader is not stopped
      */
     val leaveLastFileOpen: Boolean = true,
+    /**
+     * If it is enabled the incorrect timestamp (less than the previous one for the [com.exactpro.th2.read.file.common.StreamId])
+     * will be fixed. Otherwise, the exception will be thrown and the source processing will be stopped
+     */
+    val fixTimestamp: Boolean = false,
 ) {
     init {
         check(staleTimeout.toMillis() > 0) { "'${::staleTimeout.name}' must be positive" }

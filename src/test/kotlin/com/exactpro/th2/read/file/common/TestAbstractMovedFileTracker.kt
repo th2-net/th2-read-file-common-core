@@ -24,6 +24,7 @@ import strikt.assertions.isFalse
 import strikt.assertions.isTrue
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.TimeUnit
 
 abstract class TestAbstractMovedFileTracker : AbstractFileTest() {
     @TempDir
@@ -40,12 +41,12 @@ abstract class TestAbstractMovedFileTracker : AbstractFileTest() {
     @Test
     fun `tracks file moving`() {
         val file = createFile(dir, "file1")
-        tracker.pollFileSystemEvents()
+        tracker.pollFileSystemEvents(100, TimeUnit.MILLISECONDS)
 
         val movedFile = file.resolveSibling("file2")
         Files.move(file, movedFile)
 
-        tracker.pollFileSystemEvents()
+        tracker.pollFileSystemEvents(100, TimeUnit.MILLISECONDS)
 
         expectThat(tracker.isSameFiles(file, movedFile)).isTrue()
 
@@ -54,13 +55,13 @@ abstract class TestAbstractMovedFileTracker : AbstractFileTest() {
     @Test
     fun `circled rename`() {
         val file = createFile(dir, "file1")
-        tracker.pollFileSystemEvents()
+        tracker.pollFileSystemEvents(100, TimeUnit.MILLISECONDS)
 
         val movedFile = file.resolveSibling("file2")
         Files.move(file, movedFile)
         Files.move(movedFile, file)
 
-        tracker.pollFileSystemEvents()
+        tracker.pollFileSystemEvents(100, TimeUnit.MILLISECONDS)
 
         expectThat(tracker.isSameFiles(file, movedFile)).isFalse()
     }

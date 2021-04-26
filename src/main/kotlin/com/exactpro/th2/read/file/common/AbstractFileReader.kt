@@ -17,7 +17,13 @@
 package com.exactpro.th2.read.file.common
 
 import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.grpc.RawMessageMetadata
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
+import com.exactpro.th2.read.file.common.extensions.toInstant
+import com.exactpro.th2.read.file.common.extensions.toTimestamp
+import com.exactpro.th2.read.file.common.state.ReaderState
+import com.exactpro.th2.read.file.common.state.StreamData
+import com.google.protobuf.TextFormat.shortDebugString
 import mu.KotlinLogging
 import java.nio.file.Files
 import java.nio.file.Path
@@ -34,34 +40,35 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     private val configuration: CommonFileReaderConfiguration,
     private val directoryChecker: DirectoryChecker,
     private val contentParser: ContentParser<T>,
+    private val readerState: ReaderState,
     private val onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit,
-    private val onError: (StreamId?, String, Exception) -> Unit = { _, _, _ -> }
+    private val onError: (StreamId?, String, Exception) -> Unit = { _, _, _ -> },
+    private val sequenceGenerator: (StreamId) -> Long = { Instant.now().run { epochSecond * TimeUnit.SECONDS.toNanos(1) + nano } }
 ) : AutoCloseable {
     @Volatile
     private var closed: Boolean = false
 
     private val currentFilesByStreamId: MutableMap<StreamId, FileHolder<T>> = ConcurrentHashMap()
     private val contentByStreamId: MutableMap<StreamId, PublicationHolder> = ConcurrentHashMap()
-    private val processedFiles: MutableSet<Path> = ConcurrentHashMap.newKeySet()
-    private lateinit var fileTracker: MovedFileTracker
 
+    private lateinit var fileTracker: MovedFileTracker
     private val trackerListener = object : MovedFileTracker.FileTrackerListener {
         override fun moved(prev: Path, current: Path) {
             val holderWithPathMatch = currentFilesByStreamId.values.find { it.path == prev }
             if (holderWithPathMatch != null) {
                 LOGGER.info { "File $prev moved to $current" }
                 holderWithPathMatch.moved()
-                processedFiles.add(current)
+                readerState.fileProcessed(current)
             } else {
-                if (processedFiles.remove(prev)) {
-                    LOGGER.info { "Already processed file was moved. Update processed files list" }
-                    processedFiles.add(current)
+                if (readerState.processedFileRemoved(prev)) {
+                    LOGGER.info { "Already processed $prev file was moved to $current. Update processed files list" }
+                    readerState.fileProcessed(current)
                 }
             }
         }
 
         override fun removed(paths: Set<Path>) {
-            processedFiles.removeAll(paths)
+            readerState.processedFilesRemoved(paths)
             val holderWithRemovedFiles = currentFilesByStreamId.values
                 .filter { paths.contains(it.path) }
             LOGGER.info { "Files removed: ${holderWithRemovedFiles.joinToString(", ") { it.path.toString() }}" }
@@ -110,9 +117,20 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                         continue
                     }
 
-                    onContentRead(streamId, fileHolder, readContent)
+                    val finalContent = onContentRead(streamId, fileHolder, readContent)
 
-                    tryPublishContent(streamId, readContent)
+                    finalContent.also { content ->
+                        val streamData = readerState[streamId]
+                        setCommonInformation(streamId, content, streamData)
+                        try {
+                            validateContent(streamId, content, streamData)
+                        } catch (ex: Exception) {
+                            LOGGER.error(ex) { "Failed to validate content for stream $streamId: ${content.joinToString { shortDebugString(it) }}" }
+                            failStreamId(streamId, fileHolder, ex)
+                            return@also
+                        }
+                        tryPublishContent(streamId, content)
+                    }
                 }
 
                 for ((streamId, holder) in contentByStreamId) {
@@ -152,7 +170,17 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     protected open fun canBeClosed(streamId: StreamId, fileHolder: FileHolder<T>): Boolean {
         val canCloseTheLastFile = canCloseTheLastFileFor(streamId)
-        return (canCloseTheLastFile && noChangesForStaleTimeout(fileHolder)) || !fileHolder.isActual
+        return (canCloseTheLastFile && noChangesForStaleTimeout(fileHolder)) || !fileHolder.isActual || !fileHolder.stillExist
+    }
+
+    /**
+     * Will be invoked when the new source file for [streamId] is found.
+     */
+    protected open fun onSourceFound(
+        streamId: StreamId,
+        fileHolder: FileHolder<T>
+    ) {
+        // do nothing
     }
 
     /**
@@ -163,13 +191,16 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         streamId: StreamId,
         fileHolder: FileHolder<T>,
         readContent: Collection<RawMessage.Builder>
+    ): Collection<RawMessage.Builder> {
+        return readContent
+    }
+
+    protected open fun onSourceCorrupted(
+        streamId: StreamId,
+        fileHolder: FileHolder<T>,
+        cause: Exception
     ) {
-        readContent.forEach {
-            it.metadataBuilder.idBuilder.apply {
-                connectionIdBuilder.sessionAlias = streamId.sessionAlias
-                direction = streamId.direction
-            }
-        }
+        // do nothing
     }
 
     /**
@@ -187,6 +218,28 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     protected abstract fun acceptFile(streamId: StreamId, currentFile: Path?, newFile: Path): Boolean
 
     protected abstract fun createSource(streamId: StreamId, path: Path): FileSourceWrapper<T>
+
+    private fun setCommonInformation(
+        streamId: StreamId,
+        readContent: Collection<RawMessage.Builder>,
+        streamData: StreamData?
+    ) {
+        var sequence: Long = streamData?.run { lastSequence + 1 } ?: sequenceGenerator(streamId)
+        readContent.forEach {
+            it.metadataBuilder.apply {
+
+                if (!hasTimestamp()) {
+                    timestamp = Instant.now().toTimestamp()
+                }
+
+                idBuilder.apply {
+                    connectionIdBuilder.sessionAlias = streamId.sessionAlias
+                    direction = streamId.direction
+                    setSequence(sequence++)
+                }
+            }
+        }
+    }
 
     private fun noChangesForStaleTimeout(fileHolder: FileHolder<T>): Boolean = !fileHolder.changed &&
         abs(System.currentTimeMillis() - fileHolder.lastModificationTime.toMillis()) > configuration.staleTimeout.toMillis()
@@ -222,7 +275,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
         val newSize = content.size + addToBatch
         if (newSize >= configuration.maxBatchSize || timeForPublication(creationTime)) {
-            LOGGER.trace { "Publish the content for stream $streamId. Content size: ${content.size}; Creation time: $creationTime" }
+            LOGGER.debug { "Publish the content for stream $streamId. Content size: ${content.size}; Creation time: $creationTime" }
             publish(streamId)
         }
     }
@@ -238,17 +291,35 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     private fun closeSourceIfAllowed(
         streamId: StreamId,
-        fileHolder: FileHolder<T>
+        fileHolder: FileHolder<T>,
     ) {
         val path = fileHolder.path
         LOGGER.debug { "Source for $path file does not have any additional data yet. Check if we can close it" }
         if (canBeClosed(streamId, fileHolder)) {
-            closeSource(fileHolder)
-            currentFilesByStreamId.remove(streamId)
-            if (fileHolder.isActual) {
-                processedFiles.add(fileHolder.path)
-                onSourceClosed(streamId, fileHolder.path)
-            }
+            terminateSource(streamId, fileHolder)
+        }
+    }
+
+    private fun failStreamId(
+        streamId: StreamId,
+        fileHolder: FileHolder<T>,
+        cause: Exception
+    ) {
+        LOGGER.debug { "Terminating source " }
+        terminateSource(streamId, fileHolder)
+        readerState.excludeStreamId(streamId)
+        onSourceCorrupted(streamId, fileHolder, cause)
+    }
+
+    private fun terminateSource(
+        streamId: StreamId,
+        fileHolder: FileHolder<T>
+    ) {
+        closeSource(fileHolder)
+        currentFilesByStreamId.remove(streamId)
+        if (fileHolder.isActual) {
+            readerState.fileProcessed(fileHolder.path)
+            onSourceClosed(streamId, fileHolder.path)
         }
     }
 
@@ -291,6 +362,55 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         return content
     }
 
+    private fun validateContent(
+        streamId: StreamId,
+        content: Collection<RawMessage.Builder>,
+        streamData: StreamData?
+    ) {
+        var lastTime: Instant
+        var lastSequence: Long
+        if (streamData == null) {
+            lastTime = Instant.MIN
+            lastSequence = -1
+        } else {
+            lastTime = streamData.lastTimestamp
+            lastSequence = streamData.lastSequence
+        }
+
+        content.forEach {
+            val (currentTimestamp, curSequence) = it.checkTimeAndSequence(streamId, lastTime, lastSequence)
+            lastTime = currentTimestamp
+            lastSequence = curSequence
+        }
+        readerState[streamId] = StreamData(lastTime, lastSequence)
+    }
+
+    private fun RawMessage.Builder.checkTimeAndSequence(
+        streamId: StreamId,
+        lastTime: Instant,
+        lastSequence: Long
+    ): Pair<Instant, Long> {
+        val currentTimestamp = metadata.timestamp.toInstant()
+        if (currentTimestamp < lastTime) {
+            fixOrAlert(streamId, metadataBuilder, lastTime)
+        }
+        val curSequence = metadata.id.sequence
+        check(curSequence > lastSequence) {
+            "The sequence does not increase monotonically. Last seq: $lastSequence; current seq: $curSequence"
+        }
+        return Pair(currentTimestamp, curSequence)
+    }
+
+    private fun fixOrAlert(streamId: StreamId, metadata: RawMessageMetadata.Builder, lastTime: Instant) {
+        if (configuration.fixTimestamp) {
+            LOGGER.debug { "Fixing timestamp for $streamId. Current: ${metadata.timestamp.toInstant()}; after fix: $lastTime" }
+            metadata.timestamp = lastTime.toTimestamp()
+        } else {
+            throw IllegalStateException("The time does not increase monotonically. " +
+                "Last timestamp: $lastTime; current timestamp: ${metadata.timestamp.toInstant()}")
+        }
+    }
+
     private fun holdersToProcess(): Map<StreamId, FileHolder<T>> {
         fileTracker.pollFileSystemEvents(10, TimeUnit.MILLISECONDS)
         val newFiles: Map<StreamId, Path> = pullUpdates()
@@ -301,6 +421,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             val fileHolder = currentFilesByStreamId[streamId] ?: run {
                 newFiles[streamId]?.toFileHolder(streamId)?.also {
                     currentFilesByStreamId[streamId] = it
+                    onSourceFound(streamId, it)
                 }
             }
 
@@ -330,7 +451,8 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     private fun pullUpdates(): Map<StreamId, Path> = directoryChecker.check { streamId, path ->
         val fileHolder = currentFilesByStreamId[streamId]
-        !processedFiles.contains(path)
+        !readerState.isFileProcessed(path)
+            && !readerState.isStreamIdExcluded(streamId)
             && isNotTheSameFile(path, fileHolder)
             && acceptFile(streamId, fileHolder?.path, path).also {
             LOGGER.trace { "Calling 'acceptFile' for $path (streamId: $streamId). Current file: ${fileHolder?.path}" }

@@ -19,6 +19,8 @@ package com.exactpro.th2.read.file.common
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.impl.LineParser
+import com.google.protobuf.TextFormat
+import com.google.protobuf.TextFormat.shortDebugString
 import mu.KotlinLogging
 import org.apache.commons.lang3.RandomStringUtils
 import org.junit.jupiter.api.AfterEach
@@ -34,7 +36,6 @@ import java.util.concurrent.Future
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.ExperimentalPathApi
-import kotlin.io.path.extension
 import kotlin.random.Random
 
 @Disabled
@@ -55,7 +56,7 @@ class TestManualReader : AbstractFileTest() {
         idExtractor,
         LAST_MODIFICATION_TIME_COMPARATOR
             .thenComparing { path -> path.nameParts()[1].split('.', limit = 2)[0].toInt() }
-    )/* { it.fileName.extension == "txt" }*/
+    )
 
     private lateinit var reader: AbstractFileReader<BufferedReader>
     private lateinit var executor: ScheduledExecutorService
@@ -66,7 +67,7 @@ class TestManualReader : AbstractFileTest() {
         val configuration = CommonFileReaderConfiguration(
             staleTimeout = Duration.ofSeconds(2),
             maxPublicationDelay = Duration.ofSeconds(2),
-            leaveLastFileOpen = true
+            leaveLastFileOpen = true,
         )
         dir.toFile().deleteRecursively()
         Files.createDirectory(dir)
@@ -77,7 +78,7 @@ class TestManualReader : AbstractFileTest() {
             checker,
             LineParser(),
         ) { streamId, list ->
-            LOGGER.info { "Published: streamID: $streamId; data: $list" }
+            LOGGER.info { "Published: streamID: $streamId; data: ${list.joinToString { shortDebugString(it) }}" }
         }.apply { init(movedFileTracker) }
         executor = Executors.newSingleThreadScheduledExecutor()
 

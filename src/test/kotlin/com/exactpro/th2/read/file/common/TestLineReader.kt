@@ -20,6 +20,7 @@ import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.extensions.attributes
 import com.exactpro.th2.read.file.common.impl.BufferedReaderSourceWrapper
+import com.exactpro.th2.read.file.common.state.impl.InMemoryReaderState
 import java.io.BufferedReader
 import java.nio.file.Files
 import java.nio.file.Path
@@ -34,6 +35,7 @@ class TestLineReader(
     configuration,
     directoryChecker,
     contentParser,
+    InMemoryReaderState(),
     onStreamData,
 ) {
     override fun canReadRightNow(holder: FileHolder<BufferedReader>, staleTimeout: Duration): Boolean = true
