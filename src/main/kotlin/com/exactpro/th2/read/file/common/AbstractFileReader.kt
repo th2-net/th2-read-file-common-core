@@ -43,7 +43,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     private val readerState: ReaderState,
     private val onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit,
     private val onError: (StreamId?, String, Exception) -> Unit = { _, _, _ -> },
-    private val sequenceGenerator: (StreamId) -> Long = { Instant.now().run { epochSecond * TimeUnit.SECONDS.toNanos(1) + nano } }
+    private val sequenceGenerator: (StreamId) -> Long = DEFAULT_SEQUENCE_GENERATOR
 ) : AutoCloseable {
     @Volatile
     private var closed: Boolean = false
@@ -108,7 +108,14 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 for ((streamId, fileHolder) in holdersByStreamId) {
                     LOGGER.trace { "Processing holder for $streamId. $fileHolder" }
                     val sourceWrapper: FileSourceWrapper<T> = fileHolder.sourceWrapper
-                    val readContent: Collection<RawMessage.Builder> = readMessages(streamId, fileHolder)
+                    val readContent: Collection<RawMessage.Builder> = try {
+                        readMessages(streamId, fileHolder)
+                    } catch (ex: Exception) {
+                        LOGGER.error(ex) { "Error during reading messages for $streamId. File holder: $fileHolder" }
+                        onError(streamId, "Cannot read data from the file ${fileHolder.path}", ex)
+                        failStreamId(streamId, fileHolder, ex)
+                        continue
+                    }
 
                     if (readContent.isEmpty()) {
                         if (!sourceWrapper.hasMoreData) {
@@ -117,7 +124,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                         continue
                     }
 
-                    val finalContent = onContentRead(streamId, fileHolder, readContent)
+                    val finalContent = onContentRead(streamId, fileHolder.path, readContent)
 
                     finalContent.also { content ->
                         val streamData = readerState[streamId]
@@ -125,7 +132,8 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                         try {
                             validateContent(streamId, content, streamData)
                         } catch (ex: Exception) {
-                            LOGGER.error(ex) { "Failed to validate content for stream $streamId: ${content.joinToString { shortDebugString(it) }}" }
+                            LOGGER.error(ex) { "Failed to validate content for stream $streamId ($fileHolder):" +
+                                " ${content.joinToString { shortDebugString(it) }}" }
                             failStreamId(streamId, fileHolder, ex)
                             return@also
                         }
@@ -178,7 +186,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
      */
     protected open fun onSourceFound(
         streamId: StreamId,
-        fileHolder: FileHolder<T>
+        path: Path,
     ) {
         // do nothing
     }
@@ -189,16 +197,19 @@ abstract class AbstractFileReader<T : AutoCloseable>(
      */
     protected open fun onContentRead(
         streamId: StreamId,
-        fileHolder: FileHolder<T>,
-        readContent: Collection<RawMessage.Builder>
+        path: Path,
+        readContent: Collection<RawMessage.Builder>,
     ): Collection<RawMessage.Builder> {
         return readContent
     }
 
+    /**
+     * Will be invoked when an error is accurate during processing the source from [path] file for [StreamId]
+     */
     protected open fun onSourceCorrupted(
         streamId: StreamId,
-        fileHolder: FileHolder<T>,
-        cause: Exception
+        path: Path,
+        cause: Exception,
     ) {
         // do nothing
     }
@@ -208,7 +219,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
      */
     protected open fun onSourceClosed(
         streamId: StreamId,
-        path: Path
+        path: Path,
     ) {
         // do nothing
     }
@@ -297,6 +308,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         LOGGER.debug { "Source for $path file does not have any additional data yet. Check if we can close it" }
         if (canBeClosed(streamId, fileHolder)) {
             terminateSource(streamId, fileHolder)
+            onSourceClosed(streamId, fileHolder.path)
         }
     }
 
@@ -305,10 +317,10 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         fileHolder: FileHolder<T>,
         cause: Exception
     ) {
-        LOGGER.debug { "Terminating source " }
+        LOGGER.debug { "Terminating source from file ${fileHolder.path} for stream $streamId" }
         terminateSource(streamId, fileHolder)
         readerState.excludeStreamId(streamId)
-        onSourceCorrupted(streamId, fileHolder, cause)
+        onSourceCorrupted(streamId, fileHolder.path, cause)
     }
 
     private fun terminateSource(
@@ -319,7 +331,6 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         currentFilesByStreamId.remove(streamId)
         if (fileHolder.isActual) {
             readerState.fileProcessed(fileHolder.path)
-            onSourceClosed(streamId, fileHolder.path)
         }
     }
 
@@ -341,23 +352,18 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         var content: Collection<RawMessage.Builder> = emptyList()
 
         with(holder.sourceWrapper) {
-            try {
-                do {
-                    mark()
-                    val canParse: Boolean = contentParser.canParse(streamId, source, noChangesForStaleTimeout(holder))
-                    reset()
-                    if (canParse) {
-                        content = contentParser.parse(streamId, source)
-                        if (content.isNotEmpty()) {
-                            LOGGER.trace { "Read ${content.size} message(s) for $streamId from ${holder.path}" }
-                            break
-                        }
+            do {
+                mark()
+                val canParse: Boolean = contentParser.canParse(streamId, source, noChangesForStaleTimeout(holder))
+                reset()
+                if (canParse) {
+                    content = contentParser.parse(streamId, source)
+                    if (content.isNotEmpty()) {
+                        LOGGER.trace { "Read ${content.size} message(s) for $streamId from ${holder.path}" }
+                        break
                     }
-                } while (canParse && hasMoreData)
-            } catch (ex: Exception) {
-                LOGGER.error(ex) { "Error during reading messages for $streamId. File holder: $holder" }
-                onError(streamId, "Cannot read data from the file ${holder.path}", ex)
-            }
+                }
+            } while (canParse && hasMoreData)
         }
         return content
     }
@@ -421,7 +427,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             val fileHolder = currentFilesByStreamId[streamId] ?: run {
                 newFiles[streamId]?.toFileHolder(streamId)?.also {
                     currentFilesByStreamId[streamId] = it
-                    onSourceFound(streamId, it)
+                    onSourceFound(streamId, it.path)
                 }
             }
 
@@ -575,5 +581,6 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         private val LOGGER = KotlinLogging.logger { }
 
         private fun BasicFileAttributes.toFileState() = FileState(lastModifiedTime(), size())
+        val DEFAULT_SEQUENCE_GENERATOR: (StreamId) -> Long = { Instant.now().run { epochSecond * TimeUnit.SECONDS.toNanos(1) + nano } }
     }
 }
