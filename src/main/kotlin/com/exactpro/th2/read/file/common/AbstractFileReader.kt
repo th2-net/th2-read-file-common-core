@@ -34,7 +34,8 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     private val configuration: CommonFileReaderConfiguration,
     private val directoryChecker: DirectoryChecker,
     private val contentParser: ContentParser<T>,
-    private val onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit
+    private val onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit,
+    private val onError: (StreamId?, String, Exception) -> Unit = { _, _, _ -> }
 ) : AutoCloseable {
     @Volatile
     private var closed: Boolean = false
@@ -120,6 +121,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             } while (holdersByStreamId.isNotEmpty() && !Thread.currentThread().isInterrupted)
         } catch (ex: Exception) {
             LOGGER.error(ex) { "Error during processing updates" }
+            onError(null, "Error during processing updates", ex)
             if (ex is InterruptedException) {
                 Thread.currentThread().interrupt()
             }
@@ -268,19 +270,23 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         var content: Collection<RawMessage.Builder> = emptyList()
 
         with(holder.sourceWrapper) {
-            var canParse: Boolean
-            do {
-                mark()
-                canParse = contentParser.canParse(streamId, source, noChangesForStaleTimeout(holder))
-                reset()
-                if (canParse) {
-                    content = contentParser.parse(streamId, source)
-                    if (content.isNotEmpty()) {
-                        LOGGER.trace { "Read ${content.size} message(s) for $streamId from ${holder.path}" }
-                        break
+            try {
+                do {
+                    mark()
+                    val canParse: Boolean = contentParser.canParse(streamId, source, noChangesForStaleTimeout(holder))
+                    reset()
+                    if (canParse) {
+                        content = contentParser.parse(streamId, source)
+                        if (content.isNotEmpty()) {
+                            LOGGER.trace { "Read ${content.size} message(s) for $streamId from ${holder.path}" }
+                            break
+                        }
                     }
-                }
-            } while (canParse && hasMoreData)
+                } while (canParse && hasMoreData)
+            } catch (ex: Exception) {
+                LOGGER.error(ex) { "Error during reading messages for $streamId. File holder: $holder" }
+                onError(streamId, "Cannot read data from the file ${holder.path}", ex)
+            }
         }
         return content
     }
