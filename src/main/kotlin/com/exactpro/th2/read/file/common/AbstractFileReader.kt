@@ -21,6 +21,7 @@ import com.exactpro.th2.common.grpc.RawMessageMetadata
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.extensions.toInstant
 import com.exactpro.th2.read.file.common.extensions.toTimestamp
+import com.exactpro.th2.read.file.common.impl.DelegateReaderListener
 import com.exactpro.th2.read.file.common.state.ReaderState
 import com.exactpro.th2.read.file.common.state.StreamData
 import com.google.protobuf.TextFormat.shortDebugString
@@ -41,10 +42,26 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     private val directoryChecker: DirectoryChecker,
     private val contentParser: ContentParser<T>,
     private val readerState: ReaderState,
-    private val onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit,
-    private val onError: (StreamId?, String, Exception) -> Unit = { _, _, _ -> },
+    private val readerListener: ReaderListener,
     private val sequenceGenerator: (StreamId) -> Long = DEFAULT_SEQUENCE_GENERATOR
 ) : AutoCloseable {
+    constructor(
+        configuration: CommonFileReaderConfiguration,
+        directoryChecker: DirectoryChecker,
+        contentParser: ContentParser<T>,
+        readerState: ReaderState,
+        onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit,
+        onError: (StreamId?, String, Exception) -> Unit = { _, _, _ -> },
+        sequenceGenerator: (StreamId) -> Long = DEFAULT_SEQUENCE_GENERATOR
+    ) : this(
+        configuration,
+        directoryChecker,
+        contentParser,
+        readerState,
+        DelegateReaderListener(onStreamData, onError),
+        sequenceGenerator
+    )
+
     @Volatile
     private var closed: Boolean = false
 
@@ -112,7 +129,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                         readMessages(streamId, fileHolder)
                     } catch (ex: Exception) {
                         LOGGER.error(ex) { "Error during reading messages for $streamId. File holder: $fileHolder" }
-                        onError(streamId, "Cannot read data from the file ${fileHolder.path}", ex)
+                        readerListener.onError(streamId, "Cannot read data from the file ${fileHolder.path}", ex)
                         failStreamId(streamId, fileHolder, ex)
                         continue
                     }
@@ -147,7 +164,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             } while (holdersByStreamId.isNotEmpty() && !Thread.currentThread().isInterrupted)
         } catch (ex: Exception) {
             LOGGER.error(ex) { "Error during processing updates" }
-            onError(null, "Error during processing updates", ex)
+            readerListener.onError(null, "Error during processing updates", ex)
             if (ex is InterruptedException) {
                 Thread.currentThread().interrupt()
             }
@@ -292,7 +309,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     }
 
     private fun PublicationHolder.publish(streamId: StreamId) {
-        onStreamData(streamId, content.toList())
+        readerListener.onStreamData(streamId, content.toList())
         reset()
     }
 

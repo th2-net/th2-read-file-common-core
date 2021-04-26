@@ -19,6 +19,9 @@ package com.exactpro.th2.read.file.common
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
+import com.exactpro.th2.read.file.common.extensions.attributes
+import com.exactpro.th2.read.file.common.impl.BufferedReaderSourceWrapper
+import com.exactpro.th2.read.file.common.impl.DefaultFileReader
 import com.exactpro.th2.read.file.common.impl.LineParser
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -26,6 +29,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.spy
 import java.io.BufferedReader
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 
@@ -45,17 +49,23 @@ abstract class AbstractReaderTest : AbstractFileTest() {
         directoryChecker = DirectoryChecker(
             dir,
             { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } },
-            { it.sortWith(LAST_MODIFICATION_TIME_COMPARATOR
-                .thenComparing { path -> path.nameParts().last().toInt() }) }
+            {
+                it.sortWith(LAST_MODIFICATION_TIME_COMPARATOR
+                    .thenComparing { path -> path.nameParts().last().toInt() })
+            }
         )
 
         val movedFileTracker = MovedFileTracker(dir)
-        reader = TestLineReader(
+        reader = DefaultFileReader.Builder(
             configuration,
             directoryChecker,
             parser,
-            onStreamData,
-        ).apply { init(movedFileTracker) }
+            movedFileTracker,
+        ) { _, path -> BufferedReaderSourceWrapper(Files.newBufferedReader(path)) }
+            .readFileImmediately()
+            .onStreamData(onStreamData)
+            .acceptNewerFiles()
+            .build()
     }
 
     abstract fun createConfiguration(staleTimeout: Duration): CommonFileReaderConfiguration

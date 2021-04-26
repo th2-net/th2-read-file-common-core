@@ -18,8 +18,9 @@ package com.exactpro.th2.read.file.common
 
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
+import com.exactpro.th2.read.file.common.impl.BufferedReaderSourceWrapper
+import com.exactpro.th2.read.file.common.impl.DefaultFileReader
 import com.exactpro.th2.read.file.common.impl.LineParser
-import com.google.protobuf.TextFormat
 import com.google.protobuf.TextFormat.shortDebugString
 import mu.KotlinLogging
 import org.apache.commons.lang3.RandomStringUtils
@@ -73,13 +74,17 @@ class TestManualReader : AbstractFileTest() {
         Files.createDirectory(dir)
 
         val movedFileTracker = MovedFileTracker(dir)
-        reader = TestLineReader(
+        reader = DefaultFileReader.Builder(
             configuration,
             checker,
             LineParser(),
-        ) { streamId, list ->
-            LOGGER.info { "Published: streamID: $streamId; data: ${list.joinToString { shortDebugString(it) }}" }
-        }.apply { init(movedFileTracker) }
+            movedFileTracker,
+        ) { _, path -> BufferedReaderSourceWrapper(Files.newBufferedReader(path)) }
+            .readFileImmediately()
+            .acceptNewerFiles()
+            .onStreamData { streamId, list ->
+                LOGGER.info { "Published: streamID: $streamId; data: ${list.joinToString { shortDebugString(it) }}" }
+            }.build()
         executor = Executors.newSingleThreadScheduledExecutor()
 
         future = executor.scheduleWithFixedDelay(reader::processUpdates, 0, 5, TimeUnit.SECONDS)
