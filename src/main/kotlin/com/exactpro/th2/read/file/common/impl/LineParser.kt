@@ -21,6 +21,7 @@ import com.exactpro.th2.read.file.common.ContentParser
 import com.exactpro.th2.read.file.common.StreamId
 import com.google.protobuf.ByteString
 import java.io.BufferedReader
+import java.nio.charset.Charset
 import java.util.function.BiPredicate
 import java.util.function.Function
 
@@ -42,10 +43,14 @@ open class LineParser @JvmOverloads constructor(
         return if (readLine == null || !filter.test(streamId, readLine)) {
             emptyList()
         } else {
-            lineToMessages(readLine.let(transformer::apply))
+            lineToMessages(streamId, readLine.let(transformer::apply))
         }
     }
 
-    protected open fun lineToMessages(readLine: String): List<RawMessage.Builder> =
-        listOf(RawMessage.newBuilder().setBody(ByteString.copyFrom(readLine.toByteArray(Charsets.UTF_8))))
+    protected open fun lineToMessages(streamId: StreamId, readLine: String): List<RawMessage.Builder> =
+        listOf(lineToBuilder(readLine))
+
+    @JvmOverloads
+    protected fun lineToBuilder(readLine: String, charset: Charset = Charsets.UTF_8): RawMessage.Builder =
+        RawMessage.newBuilder().setBody(ByteString.copyFrom(readLine.toByteArray(charset)))
 }

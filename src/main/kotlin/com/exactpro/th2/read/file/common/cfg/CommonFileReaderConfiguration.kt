@@ -16,11 +16,10 @@
 
 package com.exactpro.th2.read.file.common.cfg
 
-import com.exactpro.th2.read.file.common.AbstractFileReader
 import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.UNLIMITED_PUBLICATION
 import java.time.Duration
 
-class CommonFileReaderConfiguration(
+class CommonFileReaderConfiguration @JvmOverloads constructor(
     /**
      * The timeout since the last file modification
      * before the reader starts to consider the source as finished (it won't be changes any more).
