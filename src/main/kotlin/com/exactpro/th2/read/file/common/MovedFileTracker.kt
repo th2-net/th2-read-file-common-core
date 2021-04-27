@@ -42,7 +42,7 @@ import java.util.stream.Collectors
  *
  * So, this class tries to provide the ability to check if two paths points to the same file. But there is no 100% guarantee that the result is correct.
  */
-class MovedFileTracker(
+class MovedFileTracker @JvmOverloads constructor(
     private val dir: Path,
     forceNoKey: Boolean? = null,
 ) : AutoCloseable {
