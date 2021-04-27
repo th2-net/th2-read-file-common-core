@@ -24,7 +24,7 @@ import java.io.BufferedReader
 import java.util.function.BiPredicate
 import java.util.function.Function
 
-class LineParser @JvmOverloads constructor(
+open class LineParser @JvmOverloads constructor(
     private val filter: BiPredicate<StreamId, String> = BiPredicate { _, _ -> true },
     private val transformer: Function<String, String> = Function { it }
 ) : ContentParser<BufferedReader> {
@@ -42,8 +42,10 @@ class LineParser @JvmOverloads constructor(
         return if (readLine == null || !filter.test(streamId, readLine)) {
             emptyList()
         } else {
-            listOf(RawMessage.newBuilder().setBody(ByteString.copyFrom(readLine.let(transformer::apply).toByteArray(Charsets.UTF_8))))
+            lineToMessages(readLine.let(transformer::apply))
         }
     }
 
+    protected open fun lineToMessages(readLine: String): List<RawMessage.Builder> =
+        listOf(RawMessage.newBuilder().setBody(ByteString.copyFrom(readLine.toByteArray(Charsets.UTF_8))))
 }
