@@ -43,11 +43,11 @@ open class LineParser @JvmOverloads constructor(
         return if (readLine == null || !filter.test(streamId, readLine)) {
             emptyList()
         } else {
-            lineToMessages(readLine.let(transformer::apply))
+            lineToMessages(streamId, readLine.let(transformer::apply))
         }
     }
 
-    protected open fun lineToMessages(readLine: String): List<RawMessage.Builder> =
+    protected open fun lineToMessages(streamId: StreamId, readLine: String): List<RawMessage.Builder> =
         listOf(lineToBuilder(readLine))
 
     @JvmOverloads
