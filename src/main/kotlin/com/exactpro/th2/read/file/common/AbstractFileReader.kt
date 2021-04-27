@@ -94,18 +94,61 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     }
 
     private class PublicationHolder {
+        private var _startOfPublishing: Long? = null
+        private var _batchesPublished: Int = 0
         private var _creationTime: Instant = Instant.now()
         val creationTime: Instant
             get() = _creationTime
 
         /**
+         * Call on batch publication to increment the counter
+         */
+        fun published() {
+            if (_startOfPublishing == null) {
+                _startOfPublishing = System.currentTimeMillis()
+            }
+            _batchesPublished++
+        }
+
+        fun isLimitExceeded(publicationPerSecond: Int): Boolean {
+            val startPublishing = _startOfPublishing
+            return startPublishing != null && millisSinceStartPublishing(startPublishing) < 1_000 && _batchesPublished >= publicationPerSecond
+        }
+
+        fun isTimeToReset(): Boolean {
+            val publishedAt = _startOfPublishing
+            return publishedAt != null && millisSinceStartPublishing(publishedAt) > 1_000
+        }
+
+        /**
+         * Reset the information to calculate publication limit
+         */
+        fun resetLimit() {
+            _startOfPublishing = null
+            _batchesPublished = 0
+        }
+
+        /**
          * Do not forget to copy the content before passing it to anywhere
          */
         val content: MutableList<RawMessage.Builder> = arrayListOf()
-        fun reset() {
+
+        fun resetCurrent() {
             _creationTime = Instant.now()
             content.clear()
         }
+
+        private fun millisSinceStartPublishing(startPublishing: Long) = abs(System.currentTimeMillis() - startPublishing)
+
+        override fun toString(): String {
+            return "PublicationHolder(" +
+                "startOfPublishing=$_startOfPublishing, " +
+                "batchesPublished=$_batchesPublished, " +
+                "creationTime=$_creationTime, " +
+                "content=${content.size}" +
+                ")"
+        }
+
     }
 
     fun init(fileTracker: MovedFileTracker) {
@@ -124,6 +167,12 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 LOGGER.trace { "Get ${holdersByStreamId.size} holder(s) to process" }
                 for ((streamId, fileHolder) in holdersByStreamId) {
                     LOGGER.trace { "Processing holder for $streamId. $fileHolder" }
+
+                    if (isPublicationLimitExceeded(streamId)) {
+                        LOGGER.trace { "The publication limit in ${configuration.maxBatchesPerSecond} batch/s for $streamId exceeded. Suspend reading" }
+                        continue
+                    }
+
                     val sourceWrapper: FileSourceWrapper<T> = fileHolder.sourceWrapper
                     val readContent: Collection<RawMessage.Builder> = try {
                         readMessages(streamId, fileHolder)
@@ -159,6 +208,9 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 }
 
                 for ((streamId, holder) in contentByStreamId) {
+                    if (!configuration.unlimitedPublication && isPublicationLimitExceeded(streamId, holder, configuration.maxBatchesPerSecond)) {
+                        continue
+                    }
                     holder.tryToPublish(streamId)
                 }
             } while (holdersByStreamId.isNotEmpty() && !Thread.currentThread().isInterrupted)
@@ -298,19 +350,22 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         addToBatch: Int = 0
     ) {
         if (content.isEmpty()) {
-            reset()
+            resetCurrent()
             return
         }
-        val newSize = content.size + addToBatch
-        if (newSize >= configuration.maxBatchSize || timeForPublication(creationTime)) {
-            LOGGER.debug { "Publish the content for stream $streamId. Content size: ${content.size}; Creation time: $creationTime" }
+        val size = content.size
+        val newSize = size + addToBatch
+        val maxBatchSize = configuration.maxBatchSize
+        if (newSize > maxBatchSize || size == maxBatchSize || timeForPublication(creationTime)) {
+            LOGGER.debug { "Publish the content for stream $streamId. Content size: $size; Creation time: $creationTime" }
             publish(streamId)
         }
     }
 
     private fun PublicationHolder.publish(streamId: StreamId) {
         readerListener.onStreamData(streamId, content.toList())
-        reset()
+        published()
+        resetCurrent()
     }
 
     private fun timeForPublication(creationTime: Instant): Boolean {
@@ -472,6 +527,28 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         return holdersByStreamId
     }
 
+    private fun isPublicationLimitExceeded(streamId: StreamId): Boolean {
+        val limit = configuration.maxBatchesPerSecond
+        // fast way if no limit
+        if (configuration.unlimitedPublication) {
+            return false
+        }
+        val publicationHolder = contentByStreamId[streamId] ?: return false
+        return isPublicationLimitExceeded(streamId, publicationHolder, limit)
+    }
+
+    private fun isPublicationLimitExceeded(
+        streamId: StreamId,
+        publicationHolder: PublicationHolder,
+        limit: Int
+    ): Boolean {
+        if (publicationHolder.isTimeToReset()) {
+            LOGGER.trace { "Reset time limit for $streamId ($publicationHolder)" }
+            publicationHolder.resetLimit()
+        }
+        return publicationHolder.isLimitExceeded(limit)
+    }
+
     private fun pullUpdates(): Map<StreamId, Path> = directoryChecker.check { streamId, path ->
         val fileHolder = currentFilesByStreamId[streamId]
         !readerState.isFileProcessed(path)
@@ -598,6 +675,10 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         private val LOGGER = KotlinLogging.logger { }
 
         private fun BasicFileAttributes.toFileState() = FileState(lastModifiedTime(), size())
+        private val CommonFileReaderConfiguration.unlimitedPublication: Boolean
+            get() = maxBatchesPerSecond == UNLIMITED_PUBLICATION
+
         val DEFAULT_SEQUENCE_GENERATOR: (StreamId) -> Long = { Instant.now().run { epochSecond * TimeUnit.SECONDS.toNanos(1) + nano } }
+        const val UNLIMITED_PUBLICATION = -1
     }
 }

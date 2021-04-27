@@ -26,16 +26,15 @@ import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.verify
-import org.mockito.kotlin.verifyZeroInteractions
 import org.mockito.kotlin.whenever
 import java.io.BufferedReader
 import java.time.Duration
 import java.time.Instant
 
 class TestReaderFixTimestamp : AbstractReaderTest() {
-    override fun createConfiguration(staleTimeout: Duration): CommonFileReaderConfiguration {
+    override fun createConfiguration(defaultStaleTimeout: Duration): CommonFileReaderConfiguration {
         return CommonFileReaderConfiguration(
-            staleTimeout = staleTimeout,
+            staleTimeout = defaultStaleTimeout,
             maxPublicationDelay = Duration.ofSeconds(0),
             fixTimestamp = true,
         )

@@ -16,6 +16,8 @@
 
 package com.exactpro.th2.read.file.common.cfg
 
+import com.exactpro.th2.read.file.common.AbstractFileReader
+import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.UNLIMITED_PUBLICATION
 import java.time.Duration
 
 class CommonFileReaderConfiguration(
@@ -57,10 +59,19 @@ class CommonFileReaderConfiguration(
      * will be fixed. Otherwise, the exception will be thrown and the source processing will be stopped
      */
     val fixTimestamp: Boolean = false,
+
+    /**
+     * Defines how many batches might be published in one second for a [com.exactpro.th2.read.file.common.StreamId].
+     * If limit is reached the source reading will be suspended until the next second
+     */
+    val maxBatchesPerSecond: Int = UNLIMITED_PUBLICATION,
 ) {
     init {
         check(staleTimeout.toMillis() > 0) { "'${::staleTimeout.name}' must be positive" }
         check(maxPublicationDelay.toMillis() >= 0) { "'${::maxPublicationDelay.name}' must be positive or zero" }
         check(maxBatchSize >= 0) { "'${::maxBatchSize.name}' must be positive or zero" }
+        check(maxBatchesPerSecond == UNLIMITED_PUBLICATION || maxBatchesPerSecond > 0) {
+            "The publication limit must be ${::UNLIMITED_PUBLICATION.name}($UNLIMITED_PUBLICATION) or positive value"
+        }
     }
 }

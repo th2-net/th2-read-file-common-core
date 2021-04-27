@@ -19,7 +19,6 @@ package com.exactpro.th2.read.file.common
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
-import com.exactpro.th2.read.file.common.extensions.attributes
 import com.exactpro.th2.read.file.common.impl.BufferedReaderSourceWrapper
 import com.exactpro.th2.read.file.common.impl.DefaultFileReader
 import com.exactpro.th2.read.file.common.impl.LineParser
@@ -36,7 +35,7 @@ import java.time.Duration
 abstract class AbstractReaderTest : AbstractFileTest() {
     @TempDir
     lateinit var dir: Path
-    protected val staleTimeout: Duration = Duration.ofSeconds(1)
+    protected val defaultStaleTimeout: Duration = Duration.ofSeconds(1)
     protected val parser: ContentParser<BufferedReader> = spy(LineParser())
     protected val onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit = mock { }
     protected lateinit var reader: AbstractFileReader<BufferedReader>
@@ -45,7 +44,7 @@ abstract class AbstractReaderTest : AbstractFileTest() {
 
     @BeforeEach
     internal fun setUp() {
-        configuration = createConfiguration(staleTimeout)
+        configuration = createConfiguration(defaultStaleTimeout)
         directoryChecker = DirectoryChecker(
             dir,
             { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } },
@@ -68,7 +67,7 @@ abstract class AbstractReaderTest : AbstractFileTest() {
             .build()
     }
 
-    abstract fun createConfiguration(staleTimeout: Duration): CommonFileReaderConfiguration
+    abstract fun createConfiguration(defaultStaleTimeout: Duration): CommonFileReaderConfiguration
 
     @AfterEach
     internal fun tearDown() {

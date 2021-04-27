@@ -150,7 +150,7 @@ internal class TestAbstractFileReader : AbstractReaderTest() {
             }
 
             val argumentCaptor = argumentCaptor<List<RawMessage.Builder>>()
-            verify(onStreamData, timeout(configuration.maxPublicationDelay.plus(staleTimeout).toMillis()).times(1)).invoke(any(), argumentCaptor.capture())
+            verify(onStreamData, timeout(configuration.maxPublicationDelay.plus(defaultStaleTimeout).toMillis()).times(1)).invoke(any(), argumentCaptor.capture())
             expectThat(argumentCaptor.allValues.flatten())
                 .hasSize(times * 2)
                 .apply {
@@ -198,10 +198,10 @@ internal class TestAbstractFileReader : AbstractReaderTest() {
         verifyZeroInteractions(parser, onStreamData)
     }
 
-    override fun createConfiguration(staleTimeout: Duration): CommonFileReaderConfiguration {
+    override fun createConfiguration(defaultStaleTimeout: Duration): CommonFileReaderConfiguration {
         return CommonFileReaderConfiguration(
-            staleTimeout = staleTimeout,
-            maxPublicationDelay = staleTimeout.multipliedBy(2),
+            staleTimeout = defaultStaleTimeout,
+            maxPublicationDelay = defaultStaleTimeout.multipliedBy(2),
             leaveLastFileOpen = true,
         )
     }
