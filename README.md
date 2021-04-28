@@ -1,4 +1,4 @@
-# Read file common core (0.0.4)
+# Read file common core (0.0.5)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 
@@ -97,3 +97,9 @@ The configuration uses the `Duration` class for defining the timeout. The defaul
 You need to use [JavaTime modules](https://github.com/FasterXML/jackson-modules-java8).
 
 The module you need is `com.fasterxml.jackson.datatype:jackson-datatype-jsr310`.
+
+## Changes
+
+### 0.0.5
+
++ Associate one file with multiple stream IDs;
