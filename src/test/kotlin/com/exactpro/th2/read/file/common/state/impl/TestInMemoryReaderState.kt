@@ -33,7 +33,6 @@ import strikt.assertions.isSameInstanceAs
 import strikt.assertions.isTrue
 import java.nio.file.Path
 import java.time.Instant
-import kotlin.io.path.Path
 
 internal class TestInMemoryReaderState {
     private val state = InMemoryReaderState()
@@ -42,34 +41,38 @@ internal class TestInMemoryReaderState {
     @ValueSource(booleans = [true, false])
     fun isFileProcessed(addToProcessed: Boolean) {
         val path = Path.of("test")
+        val streamId = StreamId("test", Direction.SECOND)
         if (addToProcessed) {
-            state.fileProcessed(path)
+            state.fileProcessed(streamId, path)
         }
 
-        expectThat(state.isFileProcessed(path)).isEqualTo(addToProcessed)
+        expectThat(state.isFileProcessed(streamId, path)).isEqualTo(addToProcessed)
     }
 
     @Test
-    fun processedFileRemoved() {
+    fun processedFileMoved() {
         val path = Path.of("test")
-        state.fileProcessed(path)
+        val current = Path.of("test_moved")
+        val streamId = StreamId("test", Direction.SECOND)
+        state.fileProcessed(streamId, path)
 
         expect {
-            that(state.isFileProcessed(path)).isTrue()
-            that(state.processedFileRemoved(path)).isTrue()
-            that(state.isFileProcessed(path)).isFalse()
+            that(state.isFileProcessed(streamId, path)).isTrue()
+            that(state.fileMoved(path, current)).isTrue()
+            that(state.isFileProcessed(streamId, path)).isFalse()
         }
     }
 
     @Test
     fun processedFilesRemoved() {
         val path = Path.of("test")
-        state.fileProcessed(path)
+        val streamId = StreamId("test", Direction.SECOND)
+        state.fileProcessed(streamId, path)
 
         expect {
-            that(state.isFileProcessed(path)).isTrue()
+            that(state.isFileProcessed(streamId, path)).isTrue()
             state.processedFilesRemoved(listOf(path))
-            that(state.isFileProcessed(path)).isFalse()
+            that(state.isFileProcessed(streamId, path)).isFalse()
         }
     }
 

@@ -29,7 +29,7 @@ class DirectoryChecker(
     /**
      * Extracts the [StreamId] from file name. If `null` the file will be skipped
      */
-    private val streamIdExtractor: (Path) -> StreamId?,
+    private val streamIdExtractor: (Path) -> Set<StreamId>,
 
     /**
      * Will be used to sort the files mapped to the same [StreamId]
@@ -39,10 +39,17 @@ class DirectoryChecker(
 ) {
     constructor(
         directory: Path,
+        streamFileReorder: Consumer<MutableList<Path>>,
+        streamIdExtractor: (Path) -> StreamId?,
+        filter: (Path) -> Boolean = { true }
+    ) : this(directory, { path: Path -> streamIdExtractor(path)?.let { setOf(it) } ?: emptySet() }, streamFileReorder, filter)
+
+    constructor(
+        directory: Path,
         streamFileComparator: Comparator<Path>,
         streamIdExtractor: (Path) -> StreamId?,
         filter: (Path) -> Boolean = { true }
-    ) : this(directory, streamIdExtractor, Consumer { it.sortWith(streamFileComparator) }, filter)
+    ) : this(directory, Consumer { it.sortWith(streamFileComparator) }, streamIdExtractor, filter)
 
     /**
      * @return the list of files that are in the [directory]
@@ -61,8 +68,13 @@ class DirectoryChecker(
 
         val filesByStreamId = hashMapOf<StreamId, MutableList<Path>>()
         for (path in filesInDirectory) {
-            val streamId = streamIdExtractor(path) ?: continue
-            filesByStreamId.computeIfAbsent(streamId) { arrayListOf() }.add(path)
+            val streamIds = streamIdExtractor(path)
+            if (streamIds.isEmpty()) {
+                continue
+            }
+            streamIds.forEach { streamId ->
+                filesByStreamId.computeIfAbsent(streamId) { arrayListOf() }.add(path)
+            }
         }
 
         return hashMapOf<StreamId, Path>().also { dest ->

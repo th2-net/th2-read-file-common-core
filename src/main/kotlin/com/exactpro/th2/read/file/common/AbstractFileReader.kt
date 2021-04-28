@@ -71,15 +71,15 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     private lateinit var fileTracker: MovedFileTracker
     private val trackerListener = object : MovedFileTracker.FileTrackerListener {
         override fun moved(prev: Path, current: Path) {
-            val holderWithPathMatch = currentFilesByStreamId.values.find { it.path == prev }
-            if (holderWithPathMatch != null) {
+            val entry = currentFilesByStreamId.entries.find { it.value.path == prev }
+            if (entry != null) {
+                val (streamId, holderWithPathMatch) = entry
                 LOGGER.info { "File $prev moved to $current" }
                 holderWithPathMatch.moved()
-                readerState.fileProcessed(current)
+                readerState.fileProcessed(streamId, current)
             } else {
-                if (readerState.processedFileRemoved(prev)) {
+                if (readerState.fileMoved(prev, current)) {
                     LOGGER.info { "Already processed $prev file was moved to $current. Update processed files list" }
-                    readerState.fileProcessed(current)
                 }
             }
         }
@@ -402,7 +402,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         closeSource(fileHolder)
         currentFilesByStreamId.remove(streamId)
         if (fileHolder.isActual) {
-            readerState.fileProcessed(fileHolder.path)
+            readerState.fileProcessed(streamId, fileHolder.path)
         }
     }
 
@@ -551,7 +551,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     private fun pullUpdates(): Map<StreamId, Path> = directoryChecker.check { streamId, path ->
         val fileHolder = currentFilesByStreamId[streamId]
-        !readerState.isFileProcessed(path)
+        !readerState.isFileProcessed(streamId, path)
             && !readerState.isStreamIdExcluded(streamId)
             && isNotTheSameFile(path, fileHolder)
             && acceptFile(streamId, fileHolder?.path, path).also {

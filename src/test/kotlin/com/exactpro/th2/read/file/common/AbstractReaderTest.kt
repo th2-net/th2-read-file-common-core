@@ -47,7 +47,7 @@ abstract class AbstractReaderTest : AbstractFileTest() {
         configuration = createConfiguration(defaultStaleTimeout)
         directoryChecker = DirectoryChecker(
             dir,
-            { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } },
+            createExtractor(),
             {
                 it.sortWith(LAST_MODIFICATION_TIME_COMPARATOR
                     .thenComparing { path -> path.nameParts().last().toInt() })
@@ -65,6 +65,12 @@ abstract class AbstractReaderTest : AbstractFileTest() {
             .onStreamData(onStreamData)
             .acceptNewerFiles()
             .build()
+    }
+
+    protected open fun createExtractor(): (Path) -> Set<StreamId> = { path ->
+        path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) }?.let {
+            setOf(it)
+        } ?: emptySet()
     }
 
     abstract fun createConfiguration(defaultStaleTimeout: Duration): CommonFileReaderConfiguration

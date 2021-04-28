@@ -54,9 +54,9 @@ class TestManualReader : AbstractFileTest() {
     }
     private val checker = DirectoryChecker(
         dir,
-        idExtractor,
-        { it.sortWith(LAST_MODIFICATION_TIME_COMPARATOR
-            .thenComparing { path -> path.nameParts()[1].split('.', limit = 2)[0].toInt() }) }
+        LAST_MODIFICATION_TIME_COMPARATOR
+            .thenComparing { path -> path.nameParts()[1].split('.', limit = 2)[0].toInt() },
+        idExtractor
     )
 
     private lateinit var reader: AbstractFileReader<BufferedReader>

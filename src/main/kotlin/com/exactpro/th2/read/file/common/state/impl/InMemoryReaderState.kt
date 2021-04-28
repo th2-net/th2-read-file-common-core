@@ -21,22 +21,39 @@ import com.exactpro.th2.read.file.common.state.ReaderState
 import com.exactpro.th2.read.file.common.state.StreamData
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 
 class InMemoryReaderState : ReaderState {
-    private val processedFiles: MutableSet<Path> = ConcurrentHashMap.newKeySet()
+    private val lock = ReentrantReadWriteLock()
+    private val processedFiles: MutableMap<StreamId, MutableSet<Path>> = HashMap()
     private val excludeStreamId: MutableSet<StreamId> = ConcurrentHashMap.newKeySet()
     private val streamDataByStreamId: MutableMap<StreamId, StreamData> = ConcurrentHashMap()
 
-    override fun isFileProcessed(path: Path): Boolean = processedFiles.contains(path)
-
-    override fun fileProcessed(path: Path) {
-        processedFiles.add(path)
+    override fun isFileProcessed(streamId: StreamId, path: Path): Boolean {
+        return lock.read { processedFiles[streamId]?.contains(path) ?: false }
     }
 
-    override fun processedFileRemoved(path: Path): Boolean = processedFiles.remove(path)
+    override fun fileProcessed(streamId: StreamId, path: Path) {
+        lock.write { processedFiles.computeIfAbsent(streamId) { HashSet() }.add(path) }
+    }
+
+    override fun fileMoved(path: Path, current: Path): Boolean {
+        var found = false
+        lock.write {
+            processedFiles.forEach { (_, files) ->
+                if (files.remove(path)) {
+                    files.add(current)
+                    found = true
+                }
+            }
+        }
+        return found
+    }
 
     override fun processedFilesRemoved(paths: Collection<Path>) {
-        processedFiles.removeAll(paths)
+        lock.write { processedFiles.values.forEach { it.removeAll(paths) } }
     }
 
     override fun isStreamIdExcluded(streamId: StreamId): Boolean = excludeStreamId.contains(streamId)

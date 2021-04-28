@@ -21,9 +21,9 @@ import java.nio.file.Path
 import java.time.Instant
 
 interface ReaderState {
-    fun isFileProcessed(path: Path): Boolean
-    fun fileProcessed(path: Path)
-    fun processedFileRemoved(path: Path): Boolean
+    fun isFileProcessed(streamId: StreamId, path: Path): Boolean
+    fun fileProcessed(streamId: StreamId, path: Path)
+    fun fileMoved(path: Path, current: Path): Boolean
     fun processedFilesRemoved(paths: Collection<Path>)
 
     fun isStreamIdExcluded(streamId: StreamId): Boolean
