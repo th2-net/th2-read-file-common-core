@@ -1,4 +1,4 @@
-# Read file common core (0.0.5)
+# Read file common core (0.0.6)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 

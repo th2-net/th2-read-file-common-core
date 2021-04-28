@@ -214,6 +214,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                     holder.tryToPublish(streamId)
                 }
             } while (holdersByStreamId.isNotEmpty() && !Thread.currentThread().isInterrupted)
+            LOGGER.debug { "Checking finished" }
         } catch (ex: Exception) {
             LOGGER.error(ex) { "Error during processing updates" }
             readerListener.onError(null, "Error during processing updates", ex)
