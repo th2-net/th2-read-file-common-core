@@ -1,4 +1,4 @@
-# Read file common core (0.0.6)
+# Read file common core (0.0.7)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 
@@ -88,6 +88,12 @@ class CommonFileReaderConfiguration(
      * If limit is reached the source reading will be suspended until the next second
      */
     val maxBatchesPerSecond: Int = UNLIMITED_PUBLICATION,
+    /**
+     * Disables tracking of files' movements.
+     * The reader won't be able to determinate whether the already read file was moved or deleted and a new file with the same name was added a bit later.
+     * But the reading will be a lot faster because the reader does not need to keep tracking updates from file system
+     */
+    val disableFileMovementTracking: Boolean = false,
 )
 ```
 
@@ -99,6 +105,10 @@ You need to use [JavaTime modules](https://github.com/FasterXML/jackson-modules-
 The module you need is `com.fasterxml.jackson.datatype:jackson-datatype-jsr310`.
 
 ## Changes
+
+### 0.0.7
+
++ Add parameter for disabling file movement tracking
 
 ### 0.0.5
 

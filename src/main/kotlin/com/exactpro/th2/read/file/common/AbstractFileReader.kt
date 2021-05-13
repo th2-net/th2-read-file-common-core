@@ -491,7 +491,9 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     }
 
     private fun holdersToProcess(): Map<StreamId, FileHolder<T>> {
-        fileTracker.pollFileSystemEvents(10, TimeUnit.MILLISECONDS)
+        if (!configuration.disableFileMovementTracking) {
+            fileTracker.pollFileSystemEvents(10, TimeUnit.MILLISECONDS)
+        }
         val newFiles: Map<StreamId, Path> = pullUpdates()
         val streams = newFiles.keys + currentFilesByStreamId.keys
 

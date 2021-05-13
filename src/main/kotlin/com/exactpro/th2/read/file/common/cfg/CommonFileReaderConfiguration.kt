@@ -64,6 +64,12 @@ class CommonFileReaderConfiguration @JvmOverloads constructor(
      * If limit is reached the source reading will be suspended until the next second
      */
     val maxBatchesPerSecond: Int = UNLIMITED_PUBLICATION,
+    /**
+     * Disables tracking of files' movements.
+     * The reader won't be able to determinate whether the already read file was moved or deleted and a new file with the same name was added a bit later.
+     * But the reading will be a lot faster because the reader does not need to keep tracking updates from file system
+     */
+    val disableFileMovementTracking: Boolean = false,
 ) {
     init {
         check(staleTimeout.toMillis() > 0) { "'${::staleTimeout.name}' must be positive" }
