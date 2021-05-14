@@ -1,4 +1,4 @@
-# Read file common core (0.0.7)
+# Read file common core for common V3 (1.0.0)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 
@@ -105,6 +105,10 @@ You need to use [JavaTime modules](https://github.com/FasterXML/jackson-modules-
 The module you need is `com.fasterxml.jackson.datatype:jackson-datatype-jsr310`.
 
 ## Changes
+
+### 1.0.0
+
++ Split versions for common V2 and common V3 (1.*.* - common V3, 0.* - common V2)
 
 ### 0.0.7
 
