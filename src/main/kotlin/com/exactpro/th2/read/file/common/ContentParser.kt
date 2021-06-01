@@ -18,12 +18,14 @@ package com.exactpro.th2.read.file.common
 
 import com.exactpro.th2.common.grpc.RawMessage
 
-interface ContentParser<T> {
+interface ContentParser<in T> {
 
     /**
      * @param considerNoFutureUpdates if it is `true` the source was not changed for a timeout
      *          that might be considered as final file state
      * @return `true` if there is enough data in the source to parse it
+     * @throws com.exactpro.th2.read.file.common.recovery.RecoverableException if the source needs to be reopen and recovered.
+     * It is possible only if the source wrapper implements [com.exactpro.th2.read.file.common.recovery.RecoverableFileSourceWrapper]
      */
     fun canParse(streamId: StreamId, source: T, considerNoFutureUpdates: Boolean): Boolean
 
