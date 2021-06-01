@@ -19,7 +19,14 @@ package com.exactpro.th2.read.file.common.impl
 import com.exactpro.th2.read.file.common.FileSourceWrapper
 import java.io.BufferedReader
 
-class BufferedReaderSourceWrapper<T : BufferedReader>(
+/**
+ * Wrapper for [BufferedReader] source. Can be used for sources that contains string data.
+ *
+ * **NOTE: this wrapper does not handle the half-written characters (for encoding with characters more than 1 byte length).**
+ *
+ * If you need to parse data with encoding that allows characters with more than 1 byte length please use [RecoverableBufferedReaderWrapper]
+ */
+open class BufferedReaderSourceWrapper<T : BufferedReader>(
     override val source: T
 ) : FileSourceWrapper<T> {
     override val hasMoreData: Boolean

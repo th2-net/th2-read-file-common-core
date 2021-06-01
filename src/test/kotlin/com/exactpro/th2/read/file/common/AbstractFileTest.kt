@@ -42,6 +42,15 @@ open class AbstractFileTest {
         }
     }
 
+    protected fun appendTo(file: Path, bytes: ByteArray) {
+        if (bytes.isEmpty()) {
+            return
+        }
+        Files.newOutputStream(file, StandardOpenOption.APPEND).use {
+            it.write(bytes)
+        }
+    }
+
     protected companion object {
         private val LOGGER = KotlinLogging.logger { }
         val LAST_MODIFICATION_TIME_COMPARATOR: Comparator<Path> = Comparator.comparing {
