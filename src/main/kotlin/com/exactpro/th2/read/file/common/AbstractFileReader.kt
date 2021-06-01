@@ -22,6 +22,8 @@ import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.extensions.toInstant
 import com.exactpro.th2.read.file.common.extensions.toTimestamp
 import com.exactpro.th2.read.file.common.impl.DelegateReaderListener
+import com.exactpro.th2.read.file.common.recovery.RecoverableException
+import com.exactpro.th2.read.file.common.recovery.RecoverableFileSourceWrapper
 import com.exactpro.th2.read.file.common.state.ReaderState
 import com.exactpro.th2.read.file.common.state.StreamData
 import com.google.protobuf.TextFormat.shortDebugString
@@ -173,7 +175,6 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                         continue
                     }
 
-                    val sourceWrapper: FileSourceWrapper<T> = fileHolder.sourceWrapper
                     val readContent: Collection<RawMessage.Builder> = try {
                         readMessages(streamId, fileHolder)
                     } catch (ex: Exception) {
@@ -183,6 +184,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                         continue
                     }
 
+                    val sourceWrapper: FileSourceWrapper<T> = fileHolder.sourceWrapper
                     if (readContent.isEmpty()) {
                         if (!sourceWrapper.hasMoreData) {
                             closeSourceIfAllowed(streamId, fileHolder)
@@ -427,8 +429,20 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         with(holder.sourceWrapper) {
             do {
                 mark()
-                val canParse: Boolean = contentParser.canParse(streamId, source, noChangesForStaleTimeout(holder))
-                reset()
+                val canParse: Boolean = try {
+                    contentParser.canParse(streamId, source, noChangesForStaleTimeout(holder)).also {
+                        reset()
+                    }
+                } catch (ex: RecoverableException) {
+                    LOGGER.debug(ex) { "The source for $streamId (${holder.path}) requires to be reopen and recovered" }
+                    if (!holder.supportRecovery) {
+                        LOGGER.error { "Recovery is not supported by the source ${holder.sourceWrapper::class.qualifiedName} for file ${holder.path}" }
+                        throw ex
+                    }
+                    reset()
+                    holder.recoverSource()
+                    false
+                }
                 if (canParse) {
                     content = contentParser.parse(streamId, source)
                     if (content.isNotEmpty()) {
@@ -602,6 +616,21 @@ abstract class AbstractFileReader<T : AutoCloseable>(
          */
         val isActual: Boolean
             get() = sourceState == State.ACTUAL
+
+        val supportRecovery: Boolean
+            get() = _sourceWrapper is RecoverableFileSourceWrapper
+
+        internal fun recoverSource() {
+            check(!closed) { "Source for path $path already closed" }
+            val wrapper = _sourceWrapper
+            check(wrapper is RecoverableFileSourceWrapper) { "Source wrapper is not an instance of ${RecoverableFileSourceWrapper::class.qualifiedName}" }
+            check(stillExist) { "File $path does not exist anymore" }
+            _sourceWrapper = wrapper.recoverFrom(sourceSupplier(path).source)
+            LOGGER.trace { "Closing the previous wrapper" }
+            runCatching { wrapper.close() }
+                .onSuccess { LOGGER.trace { "The previous wrapper successfully closed" } }
+                .onFailure { LOGGER.error(it) { "Cannot close the previous source wrapper" } }
+        }
 
         internal val sourceWrapper: FileSourceWrapper<T>
             get() {

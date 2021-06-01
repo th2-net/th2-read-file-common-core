@@ -18,9 +18,9 @@ package com.exactpro.th2.read.file.common
 
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
-import com.exactpro.th2.read.file.common.impl.BufferedReaderSourceWrapper
 import com.exactpro.th2.read.file.common.impl.DefaultFileReader
 import com.exactpro.th2.read.file.common.impl.LineParser
+import com.exactpro.th2.read.file.common.impl.RecoverableBufferedReaderWrapper
 import com.google.protobuf.TextFormat.shortDebugString
 import mu.KotlinLogging
 import org.apache.commons.lang3.RandomStringUtils
@@ -28,7 +28,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
-import java.io.BufferedReader
+import java.io.LineNumberReader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
@@ -59,7 +59,7 @@ class TestManualReader : AbstractFileTest() {
         idExtractor
     )
 
-    private lateinit var reader: AbstractFileReader<BufferedReader>
+    private lateinit var reader: AbstractFileReader<LineNumberReader>
     private lateinit var executor: ScheduledExecutorService
     private lateinit var future: Future<*>
 
@@ -79,7 +79,7 @@ class TestManualReader : AbstractFileTest() {
             checker,
             LineParser(),
             movedFileTracker,
-        ) { _, path -> BufferedReaderSourceWrapper(Files.newBufferedReader(path)) }
+        ) { _, path -> RecoverableBufferedReaderWrapper(LineNumberReader(Files.newBufferedReader(path))) }
             .readFileImmediately()
             .acceptNewerFiles()
             .onStreamData { streamId, list ->

@@ -19,6 +19,7 @@ package com.exactpro.th2.read.file.common.impl
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.read.file.common.AbstractFileTest
 import com.exactpro.th2.read.file.common.StreamId
+import com.exactpro.th2.read.file.common.recovery.RecoverableException
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
@@ -29,13 +30,17 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import strikt.api.expect
 import strikt.api.expectThat
+import strikt.api.expectThrows
 import strikt.assertions.first
 import strikt.assertions.hasSize
+import strikt.assertions.isA
 import strikt.assertions.isEmpty
 import strikt.assertions.isEqualTo
 import strikt.assertions.isFalse
 import strikt.assertions.isTrue
+import java.io.LineNumberReader
 import java.lang.Thread.sleep
+import java.nio.charset.MalformedInputException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
@@ -179,6 +184,38 @@ internal class TestLineParser : AbstractFileTest() {
             expect {
                 that(parser.parse(streamId, it)).hasSize(1).first()
                     .get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Transformed line 1")
+            }
+        }
+    }
+
+    @Test
+    internal fun `correctly handles the character that is not fully written`() {
+        val file = createFile(dir, "data.txt").also {
+            appendTo(it, "Line 1")
+            appendTo(it, byteArrayOf(0xC2.toByte())) // the half of ±
+        }
+
+        val streamId = StreamId("test", Direction.FIRST)
+
+        val source: () -> LineNumberReader = { LineNumberReader(Files.newBufferedReader(file, Charsets.UTF_8)) }
+        RecoverableBufferedReaderWrapper(source()).use { original ->
+
+            original.mark()
+            expectThrows<RecoverableException> {
+                parser.canParse(streamId, original.source, false)
+            }.get { cause }.isA<MalformedInputException>()
+            original.reset()
+
+            original.recoverFrom(source()).use { recovered ->
+                appendTo(file, byteArrayOf(0xB1.toByte())) // the rest of ±
+
+                expect {
+                    recovered.mark()
+                    that(parser.canParse(streamId, recovered.source, true)).isTrue()
+                    recovered.reset()
+                    that(parser.parse(streamId, recovered.source)).hasSize(1).first()
+                        .get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 1±")
+                }
             }
         }
     }
