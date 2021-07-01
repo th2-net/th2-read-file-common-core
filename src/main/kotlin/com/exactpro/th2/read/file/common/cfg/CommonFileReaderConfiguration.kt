@@ -70,6 +70,12 @@ class CommonFileReaderConfiguration @JvmOverloads constructor(
      * But the reading will be a lot faster because the reader does not need to keep tracking updates from file system
      */
     val disableFileMovementTracking: Boolean = false,
+
+    /**
+     * If this setting is set to `true` the reader will reopen the file if it detects that it was truncated (the size is less than the original one).
+     * If this setting is set to `false` the error will be reported for the StreamId and not more data will be read.
+     */
+    val allowFileTruncate: Boolean = false,
 ) {
     init {
         check(staleTimeout.toMillis() > 0) { "'${::staleTimeout.name}' must be positive" }

@@ -31,15 +31,11 @@ open class AbstractFileTest {
     }
 
     protected fun appendTo(file: Path, vararg lines: String, lfInEnd: Boolean = false) {
-        Files.newBufferedWriter(file, StandardOpenOption.APPEND).use {
-            for ((index, line) in lines.withIndex()) {
-                it.append(line)
-                if (index == lines.size - 1 && !lfInEnd) {
-                    continue
-                }
-                it.newLine()
-            }
-        }
+        write(file, lines, lfInEnd, StandardOpenOption.APPEND)
+    }
+
+    protected fun writeTo(file: Path, vararg lines: String, lfInEnd: Boolean = false) {
+        write(file, lines, lfInEnd)
     }
 
     protected fun appendTo(file: Path, bytes: ByteArray) {
@@ -48,6 +44,18 @@ open class AbstractFileTest {
         }
         Files.newOutputStream(file, StandardOpenOption.APPEND).use {
             it.write(bytes)
+        }
+    }
+
+    private fun write(file: Path, lines: Array<out String>, lfInEnd: Boolean, vararg options: StandardOpenOption) {
+        Files.newBufferedWriter(file, *options).use {
+            for ((index, line) in lines.withIndex()) {
+                it.append(line)
+                if (index == lines.size - 1 && !lfInEnd) {
+                    continue
+                }
+                it.newLine()
+            }
         }
     }
 

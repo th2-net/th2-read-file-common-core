@@ -217,6 +217,10 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 }
             } while (holdersByStreamId.isNotEmpty() && !Thread.currentThread().isInterrupted)
             LOGGER.debug { "Checking finished" }
+        } catch (ex: TruncatedSourceException) {
+            LOGGER.error(ex) { "Source was truncated but it is not allowed by configuration" }
+            readerListener.onError(ex.streamId, "Source was truncated but it is not allowed by configuration", ex)
+            failStreamId(ex.streamId, ex.holder, ex)
         } catch (ex: Exception) {
             LOGGER.error(ex) { "Error during processing updates" }
             readerListener.onError(null, "Error during processing updates", ex)
@@ -389,7 +393,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     private fun failStreamId(
         streamId: StreamId,
-        fileHolder: FileHolder<T>,
+        fileHolder: FileHolder<*>,
         cause: Exception
     ) {
         LOGGER.debug { "Terminating source from file ${fileHolder.path} for stream $streamId" }
@@ -400,7 +404,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     private fun terminateSource(
         streamId: StreamId,
-        fileHolder: FileHolder<T>
+        fileHolder: FileHolder<*>
     ) {
         closeSource(fileHolder)
         currentFilesByStreamId.remove(streamId)
@@ -409,7 +413,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
     }
 
-    private fun closeSource(fileHolder: FileHolder<T>) {
+    private fun closeSource(fileHolder: FileHolder<*>) {
         val path = fileHolder.path
         LOGGER.info { "Closing source for $path file" }
         runCatching { fileHolder.close() }
@@ -526,6 +530,13 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             }
 
             fileHolder.refreshFileInfo()
+            if (fileHolder.truncated) {
+                if (!configuration.allowFileTruncate) {
+                    throw TruncatedSourceException(streamId, fileHolder)
+                }
+                LOGGER.info { "File ${fileHolder.path} was truncated. Start reading from the beginning" }
+                fileHolder.reopen()
+            }
             if (!canReadRightNow(fileHolder, configuration.staleTimeout)) {
                 LOGGER.debug { "Cannot read ${fileHolder.path} right now. Wait for the next attempt" }
                 continue
@@ -610,6 +621,8 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             get() = _closed
         val stillExist: Boolean
             get() = Files.exists(path)
+        var truncated: Boolean = false
+            private set
 
         /**
          * The source for the holder is still in place and wos not moved or deleted
@@ -632,6 +645,18 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 .onFailure { LOGGER.error(it) { "Cannot close the previous source wrapper" } }
         }
 
+        internal fun reopen() {
+            check(!closed) { "Source for path $path already closed" }
+            val wrapper = _sourceWrapper
+            checkNotNull(wrapper) { "The original wrapper for file $path is not created yet" }
+            check(stillExist) { "File $path does not exist anymore" }
+            _sourceWrapper = sourceSupplier(path)
+            runCatching { wrapper.close() }
+                .onSuccess { LOGGER.trace { "The previous wrapper successfully closed" } }
+                .onFailure { LOGGER.error(it) { "Cannot close the previous source wrapper" } }
+            refreshFileInfo()
+        }
+
         internal val sourceWrapper: FileSourceWrapper<T>
             get() {
                 check(!closed) { "Source for path $path already closed" }
@@ -648,6 +673,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 val prevState = state
                 state = attributesView.readAttributes().toFileState()
                 _changed = state != prevState
+                truncated = prevState.fileSize > state.fileSize
             }
         }
 
@@ -695,6 +721,13 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         val lastModification: FileTime,
         val fileSize: Long,
     )
+
+    private class TruncatedSourceException(
+        val streamId: StreamId,
+        val holder: FileHolder<*>
+    ) : Exception() {
+        override val message: String = "File ${holder.path} for stream ID $streamId was truncated"
+    }
 
     private fun Path.toFileHolder(streamId: StreamId): FileHolder<T> {
         return FileHolder(this) {
