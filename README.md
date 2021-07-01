@@ -1,4 +1,4 @@
-# Read file common core for common V3 (1.1.0)
+# Read file common core for common V3 (1.2.0)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 
@@ -94,6 +94,12 @@ class CommonFileReaderConfiguration(
      * But the reading will be a lot faster because the reader does not need to keep tracking updates from file system
      */
     val disableFileMovementTracking: Boolean = false,
+
+    /**
+     * If this setting is set to `true` the reader will reopen the file if it detects that it was truncated (the size is less than the original one).
+     * If this setting is set to `false` the error will be reported for the StreamId and not more data will be read.
+     */
+    val allowFileTruncate: Boolean = false,
 )
 ```
 
@@ -105,6 +111,10 @@ You need to use [JavaTime modules](https://github.com/FasterXML/jackson-modules-
 The module you need is `com.fasterxml.jackson.datatype:jackson-datatype-jsr310`.
 
 ## Changes
+
+### 1.2.0
+
++ Add handling truncated files. Option `allowFileTruncate` for allowing that is added to the configuration
 
 ### 1.1.0
 
