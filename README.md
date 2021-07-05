@@ -12,6 +12,11 @@ That is the core part for file reads written in Java or Kotlin. It provides the 
 
 ## Usage
 
+### Files requirements
+
+If you are going to use the `reader` to read data from the file that receives new data at the same time the data should be only appended to that file.
+NOTE: **the data should be appended to exactly the same file**.
+
 ### Create the reader
 
 The base class for reader is `com.exactpro.th2.read.file.common.AbstractFileReader`.

@@ -69,6 +69,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     private val currentFilesByStreamId: MutableMap<StreamId, FileHolder<T>> = ConcurrentHashMap()
     private val contentByStreamId: MutableMap<StreamId, PublicationHolder> = ConcurrentHashMap()
+    private val pendingStreams: MutableSet<StreamId> = ConcurrentHashMap.newKeySet()
 
     private lateinit var fileTracker: MovedFileTracker
     private val trackerListener = object : MovedFileTracker.FileTrackerListener {
@@ -538,21 +539,41 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 fileHolder.reopen()
             }
             if (!canReadRightNow(fileHolder, configuration.staleTimeout)) {
-                LOGGER.debug { "Cannot read ${fileHolder.path} right now. Wait for the next attempt" }
+                if (addToPending(streamId)) {
+                    LOGGER.debug { "Cannot read ${fileHolder.path} right now. Wait for the next attempt" }
+                } else {
+                    LOGGER.trace { "Still cannot read ${fileHolder.path} for stream $streamId. Wait for next attempt" }
+                }
                 continue
             }
 
             if (!fileHolder.sourceWrapper.hasMoreData && !canBeClosed(streamId, fileHolder)) {
-                LOGGER.debug {
-                    "The ${fileHolder.path} file for stream $streamId cannot be closed yet and does not have any data. " +
-                        "Wait for the next read attempt"
+                if (addToPending(streamId)) {
+                    LOGGER.debug {
+                        "The ${fileHolder.path} file for stream $streamId cannot be closed yet and does not have any data. " +
+                            "Wait for the next read attempt"
+                    }
+                } else {
+                    LOGGER.trace {
+                        "The ${fileHolder.path} file for stream $streamId cannot be closed yet and still does not have any data. " +
+                            "Wait for the next read attempt"
+                    }
                 }
                 continue
             }
 
             holdersByStreamId[streamId] = fileHolder
         }
+        removeFromPending(holdersByStreamId.keys)
         return holdersByStreamId
+    }
+
+    private fun addToPending(id: StreamId): Boolean {
+        return pendingStreams.add(id)
+    }
+
+    private fun removeFromPending(ids: Set<StreamId>) {
+        pendingStreams.removeAll(ids)
     }
 
     private fun isPublicationLimitExceeded(streamId: StreamId): Boolean {
