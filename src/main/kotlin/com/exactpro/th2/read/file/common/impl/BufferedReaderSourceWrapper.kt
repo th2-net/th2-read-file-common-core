@@ -30,7 +30,12 @@ open class BufferedReaderSourceWrapper<T : BufferedReader>(
     override val source: T
 ) : FileSourceWrapper<T> {
     override val hasMoreData: Boolean
-        get() = source.ready()
+        get() = try {
+            mark();
+            source.readLine() != null
+        } finally {
+            reset()
+        }
 
     override fun mark(): Unit = source.mark(DEFAULT_READ_LIMIT)
 
