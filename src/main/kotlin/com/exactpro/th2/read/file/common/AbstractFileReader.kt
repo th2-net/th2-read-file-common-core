@@ -195,6 +195,11 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
                     val finalContent = onContentRead(streamId, fileHolder.path, readContent)
 
+                    if (finalContent.isEmpty()) {
+                        LOGGER.trace { "No data to process after 'onContentRead' call" }
+                        continue
+                    }
+
                     finalContent.also { content ->
                         val streamData = readerState[streamId]
                         setCommonInformation(streamId, content, streamData)
