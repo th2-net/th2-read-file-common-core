@@ -28,6 +28,9 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import java.io.LineNumberReader
 import java.nio.file.Files
 import java.nio.file.Path
@@ -42,6 +45,7 @@ import kotlin.random.Random
 @Disabled
 @ExperimentalPathApi
 class TestManualReader : AbstractFileTest() {
+    private val filter: (Path) -> Boolean = mock { onGeneric { invoke(any()) }.thenReturn(true) }
     private val dir: Path = Path.of("build/workdir")
     private val idExtractor: (Path) -> StreamId? = { path ->
         path.nameParts().let {
@@ -56,7 +60,8 @@ class TestManualReader : AbstractFileTest() {
         dir,
         LAST_MODIFICATION_TIME_COMPARATOR
             .thenComparing { path -> path.nameParts()[1].split('.', limit = 2)[0].toInt() },
-        idExtractor
+        idExtractor,
+        filter
     )
 
     private lateinit var reader: AbstractFileReader<LineNumberReader>
@@ -69,6 +74,7 @@ class TestManualReader : AbstractFileTest() {
             staleTimeout = Duration.ofSeconds(2),
             maxPublicationDelay = Duration.ofSeconds(2),
             leaveLastFileOpen = true,
+            allowFileTruncate = true,
         )
         dir.toFile().deleteRecursively()
         Files.createDirectory(dir)
@@ -150,8 +156,10 @@ class TestManualReader : AbstractFileTest() {
     @Test
     fun `manual log generation`() {
         val logFile = createFile(dir, "log-0.log")
+        whenever(filter.invoke(any())).then { it.getArgument<Path>(0).fileName.toString() == "log-0.log" }
         val random = Random(System.currentTimeMillis())
-        var copy: Int = 0
+        var copy = 0
+        val copyLimit = 5
         var linesInFile = 0
         val linesPerFile = 100
         repeat(1000) {
@@ -159,7 +167,18 @@ class TestManualReader : AbstractFileTest() {
             appendTo(logFile, "log-line-$it:${RandomStringUtils.randomAlphabetic(50, 100)}", lfInEnd = true)
             if (linesInFile >= linesPerFile) {
                 linesInFile = 0
-                Files.move(logFile, logFile.resolveSibling("log-0.log.${copy++}"))
+                for (copyIndex in copy downTo 1) {
+                    if (copyIndex == copyLimit) {
+                        LOGGER.info { "Remove last copy with index $copyIndex" }
+                        Files.delete(logFile.resolveSibling("log-0.log.${copyIndex}"))
+                    } else {
+                        val destIndex = copyIndex + 1
+                        LOGGER.info { "Move copy $copyIndex to $destIndex" }
+                        Files.move(logFile.resolveSibling("log-0.log.${copyIndex}"), logFile.resolveSibling("log-0.log.$destIndex"))
+                    }
+                }
+                Files.move(logFile, logFile.resolveSibling("log-0.log.1"))
+                copy = copy.inc().coerceAtMost(copyLimit)
                 Files.createFile(logFile)
             }
             Thread.sleep(random.nextLong(10, 100))
