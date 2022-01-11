@@ -17,11 +17,10 @@
 package com.exactpro.th2.read.file.common
 
 import mu.KotlinLogging
-import java.nio.file.FileVisitOption
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.util.function.Consumer
-import java.util.stream.Collectors
 
 class DirectoryChecker(
     private val directory: Path,
@@ -60,9 +59,9 @@ class DirectoryChecker(
             LOGGER.warn { "Directory $directory does not exist. Skip checking" }
             return emptyMap()
         }
-        val filesInDirectory = Files.walk(directory, 1, FileVisitOption.FOLLOW_LINKS)
-            .filter { Files.isRegularFile(it) && filter.invoke(it) }
-            .collect(Collectors.toUnmodifiableList())
+        val filesInDirectory: List<Path> = Files.newDirectoryStream(directory).use { dirStream ->
+            dirStream.filter(::filterFile).toList()
+        }
 
         LOGGER.trace { "Collected ${filesInDirectory.size} file(s): $filesInDirectory" }
 
@@ -86,6 +85,13 @@ class DirectoryChecker(
                 }?.also { dest[streamId] = it }
             }
         }
+    }
+
+    private fun filterFile(path: Path): Boolean = try {
+        Files.exists(path) && Files.isRegularFile(path) && filter.invoke(path)
+    } catch (e: NoSuchFileException) {
+        LOGGER.warn(e) { "File $path was removed when checking by filter" }
+        false
     }
 
     companion object {

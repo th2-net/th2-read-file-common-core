@@ -29,6 +29,7 @@ import com.exactpro.th2.read.file.common.state.StreamData
 import com.google.protobuf.TextFormat.shortDebugString
 import mu.KotlinLogging
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.attribute.BasicFileAttributeView
 import java.nio.file.attribute.BasicFileAttributes
@@ -755,10 +756,15 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         override val message: String = "File ${holder.path} for stream ID $streamId was truncated"
     }
 
-    private fun Path.toFileHolder(streamId: StreamId): FileHolder<T> {
-        return FileHolder(this) {
-            LOGGER.info { "Opening source for $it file" }
-            createSource(streamId, it)
+    private fun Path.toFileHolder(streamId: StreamId): FileHolder<T>? {
+        return try {
+            FileHolder(this) {
+                LOGGER.info { "Opening source for $it file" }
+                createSource(streamId, it)
+            }
+        } catch (ex: NoSuchFileException) {
+            LOGGER.error(ex) { "Cannot create holder for $this because file does not exist anymore" }
+            null
         }
     }
 
