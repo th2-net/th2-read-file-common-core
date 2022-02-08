@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,4 @@
 
 package com.exactpro.th2.read.file.common
 
-import com.exactpro.th2.common.grpc.Direction
-
-data class StreamId(
-    val bookName: String,
-    val sessionAlias: String,
-    val direction: Direction
-)
+const val DEFAULT_BOOK = "test_book"

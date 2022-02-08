@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2020-2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,8 +45,8 @@ class TestReaderFixTimestamp : AbstractReaderTest() {
         doReturn(true, false).whenever(parser).canParse(any(), any(), any())
         val now = Instant.now()
         val values = listOf(
-            RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.toTimestamp() },
-            RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.minusSeconds(1).toTimestamp() }
+            RawMessage.newBuilder().apply { metadataBuilder.idBuilder.timestamp = now.toTimestamp() },
+            RawMessage.newBuilder().apply { metadataBuilder.idBuilder.timestamp = now.minusSeconds(1).toTimestamp() }
         )
         doAnswer {
             val source = it.arguments[1] as BufferedReader
