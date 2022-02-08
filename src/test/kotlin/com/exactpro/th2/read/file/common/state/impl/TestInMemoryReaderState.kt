@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2020-2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,11 @@
 package com.exactpro.th2.read.file.common.state.impl
 
 import com.exactpro.th2.common.grpc.Direction
+import com.exactpro.th2.read.file.common.DEFAULT_BOOK
 import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.state.StreamData
 import org.junit.jupiter.api.Test
 
-import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import strikt.api.expect
@@ -41,7 +41,7 @@ internal class TestInMemoryReaderState {
     @ValueSource(booleans = [true, false])
     fun isFileProcessed(addToProcessed: Boolean) {
         val path = Path.of("test")
-        val streamId = StreamId("test", Direction.SECOND)
+        val streamId = StreamId(DEFAULT_BOOK, "test", Direction.SECOND)
         if (addToProcessed) {
             state.fileProcessed(streamId, path)
         }
@@ -53,7 +53,7 @@ internal class TestInMemoryReaderState {
     fun processedFileMoved() {
         val path = Path.of("test")
         val current = Path.of("test_moved")
-        val streamId = StreamId("test", Direction.SECOND)
+        val streamId = StreamId(DEFAULT_BOOK, "test", Direction.SECOND)
         state.fileProcessed(streamId, path)
 
         expect {
@@ -66,7 +66,7 @@ internal class TestInMemoryReaderState {
     @Test
     fun processedFilesRemoved() {
         val path = Path.of("test")
-        val streamId = StreamId("test", Direction.SECOND)
+        val streamId = StreamId(DEFAULT_BOOK, "test", Direction.SECOND)
         state.fileProcessed(streamId, path)
 
         expect {
@@ -78,25 +78,25 @@ internal class TestInMemoryReaderState {
 
     @Test
     fun isStreamIdExcluded() {
-        val streamId = StreamId("test", Direction.FIRST)
+        val streamId = StreamId(DEFAULT_BOOK, "test", Direction.FIRST)
         state.excludeStreamId(streamId)
 
         expect {
             that(state.isStreamIdExcluded(streamId)).isTrue()
-            that(state.isStreamIdExcluded(StreamId("test", Direction.SECOND))).isFalse()
+            that(state.isStreamIdExcluded(StreamId(DEFAULT_BOOK, "test", Direction.SECOND))).isFalse()
         }
     }
 
     @Test
     fun `stores stream data`() {
-        val streamId = StreamId("test", Direction.SECOND)
+        val streamId = StreamId(DEFAULT_BOOK, "test", Direction.SECOND)
         val data = StreamData(Instant.now(), 42)
 
         expect {
             that(state[streamId]).isNull()
             state[streamId] = data
             that(state[streamId]).isSameInstanceAs(data)
-            that(state[StreamId("test", Direction.FIRST)]).isNull()
+            that(state[StreamId(DEFAULT_BOOK, "test", Direction.FIRST)]).isNull()
         }
     }
 }

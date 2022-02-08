@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2020-2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ class TestManualReader : AbstractFileTest() {
     private val idExtractor: (Path) -> StreamId? = { path ->
         path.nameParts().let {
             if (it.size == 2) {
-                StreamId(it.first(), Direction.FIRST)
+                StreamId(DEFAULT_BOOK, it.first(), Direction.FIRST)
             } else {
                 null
             }

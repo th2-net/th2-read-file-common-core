@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2020-2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -92,10 +92,10 @@ internal class TestSameFileForDifferentStreamsInFileReader : AbstractReaderTest(
             val name = path.fileName.toString()
             hashSetOf<StreamId>().apply {
                 if (name.contains('A') || name.contains('C')) {
-                    add(StreamId("A", Direction.SECOND))
+                    add(StreamId(DEFAULT_BOOK, "A", Direction.SECOND))
                 }
                 if (name.contains('B') || name.contains('C')) {
-                    add(StreamId("B", Direction.SECOND))
+                    add(StreamId(DEFAULT_BOOK, "B", Direction.SECOND))
                 }
             }
         }
