@@ -333,6 +333,8 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 }
             }
         }
+//        readContent.first().metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, FIRST_MESSAGE_STATUS)
+//        readContent.last().metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, LAST_MESSAGE_STATUS)
     }
 
     private fun noChangesForStaleTimeout(fileHolder: FileHolder<T>): Boolean = !fileHolder.changed &&
@@ -462,6 +464,9 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                     }
                 }
             } while (canParse && hasMoreData)
+        }
+        if (!holder.sourceWrapper.hasMoreData) {
+            content.last().metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, LAST_MESSAGE_STATUS)
         }
         return content
     }
@@ -651,6 +656,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         var truncated: Boolean = false
             private set
 
+
         /**
          * The source for the holder is still in place and wos not moved or deleted
          */
@@ -770,6 +776,11 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     companion object {
         private val LOGGER = KotlinLogging.logger { }
+
+        private const val MESSAGE_STATUS_PROPERTY = "status"
+
+        private const val FIRST_MESSAGE_STATUS = "START"
+        private const val LAST_MESSAGE_STATUS = "FIN"
 
         private fun BasicFileAttributes.toFileState() = FileState(lastModifiedTime(), size())
         private val CommonFileReaderConfiguration.unlimitedPublication: Boolean
