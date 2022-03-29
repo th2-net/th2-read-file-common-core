@@ -64,8 +64,14 @@ internal class TestAbstractFileReader : AbstractReaderTest() {
         expectThat(firstCaptor.lastValue)
             .hasSize(2)
             .apply {
-                get(0).get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 1")
-                get(1).get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 2")
+                get(0).run {
+                    get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 1")
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo("START")
+                }
+                get(1).run {
+                    get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 2")
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo("FIN")
+                }
 
                 all { get { metadata }.get { id }.get { connectionId }.get { sessionAlias }.isEqualTo("A") }
             }
