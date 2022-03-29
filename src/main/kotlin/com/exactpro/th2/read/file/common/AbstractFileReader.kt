@@ -177,14 +177,23 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                         continue
                     }
 
+                    val lastState = fileHolder.readState
+
                     val readContent: Collection<RawMessage.Builder> = try {
-                        readMessages(streamId, fileHolder)
+                        readMessages(streamId, fileHolder).apply {
+                            when {
+                                fileHolder.readState == FileHolder.ReadState.FIN -> lastOrNull()?.metadataBuilder?.putProperties(MESSAGE_STATUS_PROPERTY, FileHolder.ReadState.FIN.name)
+                                lastState == FileHolder.ReadState.START  -> firstOrNull()?.metadataBuilder?.putProperties(MESSAGE_STATUS_PROPERTY, FileHolder.ReadState.START.name)
+                            }
+                        }
+
                     } catch (ex: Exception) {
                         LOGGER.error(ex) { "Error during reading messages for $streamId. File holder: $fileHolder" }
                         readerListener.onError(streamId, "Cannot read data from the file ${fileHolder.path}", ex)
                         failStreamId(streamId, fileHolder, ex)
                         continue
                     }
+
 
                     val sourceWrapper: FileSourceWrapper<T> = fileHolder.sourceWrapper
                     if (readContent.isEmpty()) {
@@ -333,8 +342,6 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 }
             }
         }
-//        readContent.first().metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, FIRST_MESSAGE_STATUS)
-//        readContent.last().metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, LAST_MESSAGE_STATUS)
     }
 
     private fun noChangesForStaleTimeout(fileHolder: FileHolder<T>): Boolean = !fileHolder.changed &&
@@ -458,15 +465,17 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 }
                 if (canParse) {
                     content = contentParser.parse(streamId, source)
+                    holder.readState = FileHolder.ReadState.IN_PROGRESS
                     if (content.isNotEmpty()) {
                         LOGGER.trace { "Read ${content.size} message(s) for $streamId from ${holder.path}" }
                         break
                     }
                 }
             } while (canParse && hasMoreData)
-        }
-        if (!holder.sourceWrapper.hasMoreData) {
-            content.last().metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, LAST_MESSAGE_STATUS)
+
+            if (!hasMoreData) {
+                holder.readState = FileHolder.ReadState.FIN
+            }
         }
         return content
     }
@@ -655,6 +664,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             get() = Files.exists(path)
         var truncated: Boolean = false
             private set
+        var readState: ReadState = ReadState.START
 
 
         /**
@@ -687,6 +697,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             runCatching { wrapper.close() }
                 .onSuccess { LOGGER.trace { "The previous wrapper successfully closed" } }
                 .onFailure { LOGGER.error(it) { "Cannot close the previous source wrapper" } }
+            readState = ReadState.START
             refreshFileInfo()
         }
 
@@ -738,11 +749,14 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 "size=$size, " +
                 "changed=$changed, " +
                 "closed=$closed, " +
+                "readState=$readState, " +
                 "source=${_sourceWrapper?.run { "(hasMoreData=$hasMoreData)" }}" +
                 ")"
         }
 
         private enum class State { ACTUAL, MOVED, REMOVED }
+
+        enum class ReadState { START, IN_PROGRESS, FIN }
 
         companion object {
             private val UNKNOWN_STATE = FileState(FileTime.fromMillis(0), -1)
@@ -777,10 +791,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     companion object {
         private val LOGGER = KotlinLogging.logger { }
 
-        private const val MESSAGE_STATUS_PROPERTY = "status"
-
-        private const val FIRST_MESSAGE_STATUS = "START"
-        private const val LAST_MESSAGE_STATUS = "FIN"
+        const val MESSAGE_STATUS_PROPERTY = "STATUS"
 
         private fun BasicFileAttributes.toFileState() = FileState(lastModifiedTime(), size())
         private val CommonFileReaderConfiguration.unlimitedPublication: Boolean
