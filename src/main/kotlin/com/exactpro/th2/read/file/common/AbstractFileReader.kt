@@ -180,13 +180,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                     val lastState = fileHolder.readState
 
                     val readContent: Collection<RawMessage.Builder> = try {
-                        readMessages(streamId, fileHolder).apply {
-                            when {
-                                fileHolder.readState == FileHolder.ReadState.FIN -> lastOrNull()?.metadataBuilder?.putProperties(MESSAGE_STATUS_PROPERTY, FileHolder.ReadState.FIN.name)
-                                lastState == FileHolder.ReadState.START  -> firstOrNull()?.metadataBuilder?.putProperties(MESSAGE_STATUS_PROPERTY, FileHolder.ReadState.START.name)
-                            }
-                        }
-
+                        readMessages(streamId, fileHolder)
                     } catch (ex: Exception) {
                         LOGGER.error(ex) { "Error during reading messages for $streamId. File holder: $fileHolder" }
                         readerListener.onError(streamId, "Cannot read data from the file ${fileHolder.path}", ex)
@@ -211,6 +205,10 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                     }
 
                     finalContent.also { content ->
+                        when {
+                            fileHolder.readState == FileHolder.ReadState.FIN -> content.lastOrNull()?.metadataBuilder?.putProperties(MESSAGE_STATUS_PROPERTY, FileHolder.ReadState.FIN.name)
+                            lastState == FileHolder.ReadState.START  -> content.firstOrNull()?.metadataBuilder?.putProperties(MESSAGE_STATUS_PROPERTY, FileHolder.ReadState.START.name)
+                        }
                         val streamData = readerState[streamId]
                         setCommonInformation(streamId, content, streamData)
                         try {
@@ -465,7 +463,6 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 }
                 if (canParse) {
                     content = contentParser.parse(streamId, source)
-                    holder.readState = FileHolder.ReadState.IN_PROGRESS
                     if (content.isNotEmpty()) {
                         LOGGER.trace { "Read ${content.size} message(s) for $streamId from ${holder.path}" }
                         break
