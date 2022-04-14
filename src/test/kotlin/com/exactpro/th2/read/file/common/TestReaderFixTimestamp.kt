@@ -45,8 +45,8 @@ class TestReaderFixTimestamp : AbstractReaderTest() {
         doReturn(true, false).whenever(parser).canParse(any(), any(), any())
         val now = Instant.now()
         val values = listOf(
-            RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.toTimestamp() },
-            RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.minusSeconds(1).toTimestamp() }
+            RawMessage.newBuilder().apply { metadataBuilder.idBuilder.timestamp = now.toTimestamp() },
+            RawMessage.newBuilder().apply { metadataBuilder.idBuilder.timestamp = now.minusSeconds(1).toTimestamp() }
         )
         doAnswer {
             val source = it.arguments[1] as BufferedReader

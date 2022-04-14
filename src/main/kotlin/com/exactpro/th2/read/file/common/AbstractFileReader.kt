@@ -320,17 +320,15 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     ) {
         var sequence: Long = streamData?.run { lastSequence + 1 } ?: sequenceGenerator(streamId)
         readContent.forEach {
-            it.metadataBuilder.apply {
+            it.metadataBuilder.idBuilder.apply {
 
                 if (!hasTimestamp()) {
                     timestamp = Instant.now().toTimestamp()
                 }
 
-                idBuilder.apply {
-                    connectionIdBuilder.sessionAlias = streamId.sessionAlias
-                    direction = streamId.direction
-                    setSequence(sequence++)
-                }
+                connectionIdBuilder.sessionAlias = streamId.sessionAlias
+                direction = streamId.direction
+                setSequence(sequence++)
             }
         }
     }
@@ -494,7 +492,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         lastTime: Instant,
         lastSequence: Long
     ): Pair<Instant, Long> {
-        val currentTimestamp = metadata.timestamp.toInstant()
+        val currentTimestamp = metadata.id.timestamp.toInstant()
         if (currentTimestamp < lastTime) {
             fixOrAlert(streamId, metadataBuilder, lastTime)
         }
@@ -507,11 +505,11 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     private fun fixOrAlert(streamId: StreamId, metadata: RawMessageMetadata.Builder, lastTime: Instant) {
         if (configuration.fixTimestamp) {
-            LOGGER.debug { "Fixing timestamp for $streamId. Current: ${metadata.timestamp.toInstant()}; after fix: $lastTime" }
-            metadata.timestamp = lastTime.toTimestamp()
+            LOGGER.debug { "Fixing timestamp for $streamId. Current: ${metadata.id.timestamp.toInstant()}; after fix: $lastTime" }
+            metadata.idBuilder.timestamp = lastTime.toTimestamp()
         } else {
             throw IllegalStateException("The time does not increase monotonically. " +
-                "Last timestamp: $lastTime; current timestamp: ${metadata.timestamp.toInstant()}")
+                "Last timestamp: $lastTime; current timestamp: ${metadata.id.timestamp.toInstant()}")
         }
     }
 
