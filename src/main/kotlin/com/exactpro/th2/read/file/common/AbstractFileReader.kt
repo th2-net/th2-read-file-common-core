@@ -177,8 +177,6 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                         continue
                     }
 
-                    val lastState = fileHolder.readState
-
                     val readContent: Collection<RawMessage.Builder> = try {
                         readMessages(streamId, fileHolder)
                     } catch (ex: Exception) {
@@ -199,19 +197,21 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                     val finalContent = onContentRead(streamId, fileHolder.path, readContent)
 
                     if (finalContent.isEmpty()) {
-                        LOGGER.trace { "No data to process after 'onContentRead' call, read state changed: $lastState -> ${fileHolder.readState}" }
-                        if (lastState == FileHolder.ReadState.START) {
-                            fileHolder.resetState()
-                        }
+                        LOGGER.trace { "No data to process after 'onContentRead' call, current state: ${fileHolder.readState}" }
                         continue
                     }
 
                     finalContent.also { content ->
-                        if (content.size == 1 && lastState == FileHolder.ReadState.START && fileHolder.readState == FileHolder.ReadState.FIN) {
-                            content.first().markSingle()
-                        } else {
-                            if (lastState == FileHolder.ReadState.START) content.first().markFirst()
-                            if (fileHolder.readState == FileHolder.ReadState.FIN) content.last().markLast()
+                        if (!configuration.leaveLastFileOpen) {
+                            val lastState = fileHolder.readState
+                            fileHolder.updateState()
+
+                            if (content.size == 1 && lastState == FileHolder.ReadState.START && fileHolder.readState == FileHolder.ReadState.FIN) {
+                                content.first().markSingle()
+                            } else {
+                                if (lastState == FileHolder.ReadState.START) content.first().markFirst()
+                                if (fileHolder.readState == FileHolder.ReadState.FIN) content.last().markLast()
+                            }
                         }
 
                         val streamData = readerState[streamId]
@@ -479,7 +479,6 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                     }
                 }
             } while (canParse && hasMoreData)
-            holder.updateState()
         }
         return content
     }
@@ -679,11 +678,6 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
         val supportRecovery: Boolean
             get() = _sourceWrapper is RecoverableFileSourceWrapper
-
-        internal fun resetState() {
-            this.readState = ReadState.START
-            LOGGER.trace { "Reset state for: $this" }
-        }
 
         internal fun updateState() {
             readState = if (sourceWrapper.hasMoreData) {

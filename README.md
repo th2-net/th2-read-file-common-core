@@ -115,11 +115,19 @@ You need to use [JavaTime modules](https://github.com/FasterXML/jackson-modules-
 
 The module you need is `com.fasterxml.jackson.datatype:jackson-datatype-jsr310`.
 
+#### Behavior details
+
+Each file will produce group of messages that can include `th2.read.order_marker` property:
+ * First and last messages will be marked as `start` and `fin`. If first message wasn't sent, `start` mark will be moved to next one 
+until some messages will be actually sent.
+ * If file produced only one message, it will be marked as `single`
+
+
 ## Changes
 
 ### 1.3.0
 
-+ Adds new flags for first `START` and last `FIN` messages
++ Adds new property `th2.read.order_marker` for first and last messages [`start`/`fin`] or [`single`] for files with single message
 
 ### 1.2.2
 
