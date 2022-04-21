@@ -70,11 +70,11 @@ internal class TestAbstractFileReader : AbstractReaderTest() {
             .apply {
                 get(0).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 1")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo("START")
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_FIRST)
                 }
                 get(1).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 2")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo("FIN")
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_LAST)
                 }
 
                 all { get { metadata }.get { id }.get { connectionId }.get { sessionAlias }.isEqualTo("A") }
