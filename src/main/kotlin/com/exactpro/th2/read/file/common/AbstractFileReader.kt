@@ -204,10 +204,13 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                     }
 
                     finalContent.also { content ->
-                        when {
-                            fileHolder.readState == FileHolder.ReadState.FIN -> content.lastOrNull()?.metadataBuilder?.putProperties(MESSAGE_STATUS_PROPERTY, FileHolder.ReadState.FIN.name)
-                            lastState == FileHolder.ReadState.START  -> content.firstOrNull()?.metadataBuilder?.putProperties(MESSAGE_STATUS_PROPERTY, FileHolder.ReadState.START.name)
+                        if (content.size == 1 && lastState == FileHolder.ReadState.START && fileHolder.readState == FileHolder.ReadState.FIN) {
+                            content.first().markSingle()
+                        } else {
+                            if (lastState == FileHolder.ReadState.START) content.first().markFirst()
+                            if (fileHolder.readState == FileHolder.ReadState.FIN) content.last().markLast()
                         }
+
                         val streamData = readerState[streamId]
                         setCommonInformation(streamId, content, streamData)
                         try {
@@ -242,6 +245,11 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             }
         }
     }
+
+    fun RawMessage.Builder.markFirst(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_FIRST)
+    fun RawMessage.Builder.markLast(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_LAST)
+    fun RawMessage.Builder.markSingle(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_SINGLE)
+
 
     override fun close() {
         if (closed) {
@@ -470,9 +478,8 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 }
             } while (canParse && hasMoreData)
 
-            if (!hasMoreData) {
-                holder.readState = FileHolder.ReadState.FIN
-            }
+            holder.readState = if (!hasMoreData) FileHolder.ReadState.FIN else FileHolder.ReadState.IN_PROGRESS
+            LOGGER.trace { "After read holder had status: ${holder.readState}" }
         }
         return content
     }
@@ -789,6 +796,9 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         private val LOGGER = KotlinLogging.logger { }
 
         const val MESSAGE_STATUS_PROPERTY = "STATUS"
+        const val MESSAGE_STATUS_SINGLE = "SINGLE"
+        const val MESSAGE_STATUS_FIRST = "START"
+        const val MESSAGE_STATUS_LAST = "FIN"
 
         private fun BasicFileAttributes.toFileState() = FileState(lastModifiedTime(), size())
         private val CommonFileReaderConfiguration.unlimitedPublication: Boolean

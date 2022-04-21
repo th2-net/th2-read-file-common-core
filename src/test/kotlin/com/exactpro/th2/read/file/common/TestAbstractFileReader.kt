@@ -17,7 +17,10 @@
 package com.exactpro.th2.read.file.common
 
 import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_STATUS_FIRST
+import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_STATUS_LAST
 import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_STATUS_PROPERTY
+import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_STATUS_SINGLE
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.extensions.toTimestamp
 import org.junit.jupiter.api.Disabled
@@ -84,7 +87,11 @@ internal class TestAbstractFileReader : AbstractReaderTest() {
             appendTo(it, "Line 1", "Line 2", "Line 3")
         }
 
-        val lastFile = createFile(dir, "A-1").also {
+        createFile(dir, "A-1").also {
+            appendTo(it, "Line")
+        }
+
+        val lastFile = createFile(dir, "A-2").also {
             appendTo(it, "Line 4", "Line 5")
         }
 
@@ -102,11 +109,11 @@ internal class TestAbstractFileReader : AbstractReaderTest() {
         verify(onStreamData).invoke(any(), firstCaptor.capture())
 
         expectThat(firstCaptor.allValues.flatten())
-            .hasSize(5)
+            .hasSize(6)
             .apply {
                 get(0).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 1")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo("START")
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_FIRST)
                 }
                 get(1).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 2")
@@ -114,15 +121,19 @@ internal class TestAbstractFileReader : AbstractReaderTest() {
                 }
                 get(2).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 3")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo("FIN")
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_LAST)
                 }
                 get(3).run {
-                    get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 4")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo("START")
+                    get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line")
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_SINGLE)
                 }
                 get(4).run {
+                    get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 4")
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_FIRST)
+                }
+                get(5).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 5")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo("FIN")
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_LAST)
                 }
 
                 all { get { metadata }.get { id }.get { connectionId }.get { sessionAlias }.isEqualTo("A") }
