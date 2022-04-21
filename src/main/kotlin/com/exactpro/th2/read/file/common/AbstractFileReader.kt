@@ -199,7 +199,10 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                     val finalContent = onContentRead(streamId, fileHolder.path, readContent)
 
                     if (finalContent.isEmpty()) {
-                        LOGGER.trace { "No data to process after 'onContentRead' call" }
+                        LOGGER.trace { "No data to process after 'onContentRead' call, read state changed: $lastState -> ${fileHolder.readState}" }
+                        if (lastState == FileHolder.ReadState.START) {
+                            fileHolder.readState = FileHolder.ReadState.START
+                        }
                         continue
                     }
 
@@ -246,9 +249,9 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
     }
 
-    fun RawMessage.Builder.markFirst(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_FIRST)
-    fun RawMessage.Builder.markLast(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_LAST)
-    fun RawMessage.Builder.markSingle(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_SINGLE)
+    private fun RawMessage.Builder.markFirst(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_FIRST)
+    private fun RawMessage.Builder.markLast(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_LAST)
+    private fun RawMessage.Builder.markSingle(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_SINGLE)
 
 
     override fun close() {
@@ -478,8 +481,9 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 }
             } while (canParse && hasMoreData)
 
-            holder.readState = if (!hasMoreData) FileHolder.ReadState.FIN else FileHolder.ReadState.IN_PROGRESS
-            LOGGER.trace { "After read holder had status: ${holder.readState}" }
+            if (!hasMoreData) {
+                holder.readState = FileHolder.ReadState.FIN
+            }
         }
         return content
     }
