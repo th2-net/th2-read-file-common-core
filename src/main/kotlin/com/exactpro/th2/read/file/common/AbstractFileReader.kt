@@ -201,7 +201,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                     if (finalContent.isEmpty()) {
                         LOGGER.trace { "No data to process after 'onContentRead' call, read state changed: $lastState -> ${fileHolder.readState}" }
                         if (lastState == FileHolder.ReadState.START) {
-                            fileHolder.readState = FileHolder.ReadState.START
+                            fileHolder.resetState()
                         }
                         continue
                     }
@@ -475,15 +475,11 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                     content = contentParser.parse(streamId, source)
                     if (content.isNotEmpty()) {
                         LOGGER.trace { "Read ${content.size} message(s) for $streamId from ${holder.path}" }
-                        holder.readState = FileHolder.ReadState.IN_PROGRESS
                         break
                     }
                 }
             } while (canParse && hasMoreData)
-
-            if (!hasMoreData) {
-                holder.readState = FileHolder.ReadState.FIN
-            }
+            holder.updateState()
         }
         return content
     }
@@ -673,7 +669,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         var truncated: Boolean = false
             private set
         var readState: ReadState = ReadState.START
-
+            private set
 
         /**
          * The source for the holder is still in place and wos not moved or deleted
@@ -683,6 +679,20 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
         val supportRecovery: Boolean
             get() = _sourceWrapper is RecoverableFileSourceWrapper
+
+        internal fun resetState() {
+            this.readState = ReadState.START
+            LOGGER.trace { "Reset state for: $this" }
+        }
+
+        internal fun updateState() {
+            readState = if (sourceWrapper.hasMoreData) {
+                ReadState.IN_PROGRESS
+            } else {
+                ReadState.FIN
+            }
+            LOGGER.trace { "Update state for: $this" }
+        }
 
         internal fun recoverSource() {
             check(!closed) { "Source for path $path already closed" }
