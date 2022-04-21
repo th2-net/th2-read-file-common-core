@@ -38,6 +38,7 @@ import strikt.assertions.allIndexed
 import strikt.assertions.get
 import strikt.assertions.hasSize
 import strikt.assertions.isEqualTo
+import strikt.assertions.isNull
 import java.nio.file.Files
 import java.time.Duration
 import java.time.Instant
@@ -80,11 +81,11 @@ internal class TestAbstractFileReader : AbstractReaderTest() {
     @Test
     internal fun `reads data as expected`() {
         createFile(dir, "A-0").also {
-            appendTo(it, "Line 1", "Line 2")
+            appendTo(it, "Line 1", "Line 2", "Line 3")
         }
 
         val lastFile = createFile(dir, "A-1").also {
-            appendTo(it, "Line 3", "Line 4")
+            appendTo(it, "Line 4", "Line 5")
         }
 
         assertTimeoutPreemptively(configuration.staleTimeout.plusMillis(200)) {
@@ -101,7 +102,7 @@ internal class TestAbstractFileReader : AbstractReaderTest() {
         verify(onStreamData).invoke(any(), firstCaptor.capture())
 
         expectThat(firstCaptor.allValues.flatten())
-            .hasSize(4)
+            .hasSize(5)
             .apply {
                 get(0).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 1")
@@ -109,14 +110,18 @@ internal class TestAbstractFileReader : AbstractReaderTest() {
                 }
                 get(1).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 2")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo("FIN")
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isNull()
                 }
                 get(2).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 3")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo("START")
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo("FIN")
                 }
                 get(3).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 4")
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo("START")
+                }
+                get(4).run {
+                    get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 5")
                     get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo("FIN")
                 }
 
