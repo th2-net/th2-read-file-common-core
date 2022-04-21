@@ -809,10 +809,10 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     companion object {
         private val LOGGER = KotlinLogging.logger { }
 
-        const val MESSAGE_STATUS_PROPERTY = "STATUS"
-        const val MESSAGE_STATUS_SINGLE = "SINGLE"
-        const val MESSAGE_STATUS_FIRST = "START"
-        const val MESSAGE_STATUS_LAST = "FIN"
+        const val MESSAGE_STATUS_PROPERTY = "th2.read.order_marker"
+        const val MESSAGE_STATUS_SINGLE = "single"
+        const val MESSAGE_STATUS_FIRST = "start"
+        const val MESSAGE_STATUS_LAST = "fin"
 
         private fun BasicFileAttributes.toFileState() = FileState(lastModifiedTime(), size())
         private val CommonFileReaderConfiguration.unlimitedPublication: Boolean
