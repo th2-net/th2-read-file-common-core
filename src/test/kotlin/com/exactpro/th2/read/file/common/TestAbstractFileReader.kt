@@ -167,7 +167,6 @@ internal class TestAbstractFileReader : AbstractReaderTest() {
     }
 
     @Test
-    @Disabled //FIXME
     internal fun `reads data from log rotation pattern`() {
 
         val exec = Executors.newSingleThreadScheduledExecutor()
