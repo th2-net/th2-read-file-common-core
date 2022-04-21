@@ -188,7 +188,6 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                         continue
                     }
 
-
                     val sourceWrapper: FileSourceWrapper<T> = fileHolder.sourceWrapper
                     if (readContent.isEmpty()) {
                         if (!sourceWrapper.hasMoreData) {
@@ -465,6 +464,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                     content = contentParser.parse(streamId, source)
                     if (content.isNotEmpty()) {
                         LOGGER.trace { "Read ${content.size} message(s) for $streamId from ${holder.path}" }
+                        holder.readState = FileHolder.ReadState.IN_PROGRESS
                         break
                     }
                 }
