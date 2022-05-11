@@ -120,8 +120,9 @@ The module you need is `com.fasterxml.jackson.datatype:jackson-datatype-jsr310`.
 Each file will produce group of messages that can include `th2.read.order_marker` property:
  * First and last messages will be marked as `start` and `fin`. If first message wasn't sent, `start` mark will be moved to next one 
 until some messages will be actually sent.
- * If file produced only one message, it will be marked as `single`
+ * If file produced only one message, it will be marked as `single` 
 
+ **NOTE**: If option `leaveLastFileOpen` was turned on means no flags will be generated, this option provides continues data without certain end
 
 ## Changes
 
