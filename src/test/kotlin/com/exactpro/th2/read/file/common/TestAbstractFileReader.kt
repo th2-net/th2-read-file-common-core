@@ -22,30 +22,20 @@ import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_ST
 import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_STATUS_PROPERTY
 import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_STATUS_SINGLE
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
-import com.exactpro.th2.read.file.common.extensions.toTimestamp
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.clearInvocations
-import org.mockito.kotlin.doReturn
-import org.mockito.kotlin.never
-import org.mockito.kotlin.timeout
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyZeroInteractions
-import org.mockito.kotlin.whenever
 import strikt.api.expectThat
 import strikt.assertions.all
-import strikt.assertions.allIndexed
 import strikt.assertions.get
 import strikt.assertions.hasSize
 import strikt.assertions.isEqualTo
 import strikt.assertions.isNull
-import java.nio.file.Files
 import java.time.Duration
-import java.time.Instant
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 internal class TestAbstractFileReader : AbstractReaderTest() {
 
