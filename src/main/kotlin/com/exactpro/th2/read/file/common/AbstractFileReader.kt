@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2020-2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -197,11 +197,23 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                     val finalContent = onContentRead(streamId, fileHolder.path, readContent)
 
                     if (finalContent.isEmpty()) {
-                        LOGGER.trace { "No data to process after 'onContentRead' call" }
+                        LOGGER.trace { "No data to process after 'onContentRead' call, current state: ${fileHolder.readState}" }
                         continue
                     }
 
                     finalContent.also { content ->
+                        if (!configuration.leaveLastFileOpen) {
+                            val lastState = fileHolder.readState
+                            fileHolder.updateState()
+
+                            if (content.size == 1 && lastState == FileHolder.ReadState.START && fileHolder.readState == FileHolder.ReadState.FIN) {
+                                content.first().markSingle()
+                            } else {
+                                if (lastState == FileHolder.ReadState.START) content.first().markFirst()
+                                if (fileHolder.readState == FileHolder.ReadState.FIN) content.last().markLast()
+                            }
+                        }
+
                         val streamData = readerState[streamId]
                         setCommonInformation(streamId, content, streamData)
                         try {
@@ -236,6 +248,11 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             }
         }
     }
+
+    private fun RawMessage.Builder.markFirst(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_FIRST)
+    private fun RawMessage.Builder.markLast(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_LAST)
+    private fun RawMessage.Builder.markSingle(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_SINGLE)
+
 
     override fun close() {
         if (closed) {
@@ -650,6 +667,8 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             get() = Files.exists(path)
         var truncated: Boolean = false
             private set
+        var readState: ReadState = ReadState.START
+            private set
 
         /**
          * The source for the holder is still in place and wos not moved or deleted
@@ -659,6 +678,15 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
         val supportRecovery: Boolean
             get() = _sourceWrapper is RecoverableFileSourceWrapper
+
+        internal fun updateState() {
+            readState = if (sourceWrapper.hasMoreData) {
+                ReadState.IN_PROGRESS
+            } else {
+                ReadState.FIN
+            }
+            LOGGER.trace { "Update state for: $this" }
+        }
 
         internal fun recoverSource() {
             check(!closed) { "Source for path $path already closed" }
@@ -681,6 +709,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             runCatching { wrapper.close() }
                 .onSuccess { LOGGER.trace { "The previous wrapper successfully closed" } }
                 .onFailure { LOGGER.error(it) { "Cannot close the previous source wrapper" } }
+            readState = ReadState.START
             refreshFileInfo()
         }
 
@@ -732,11 +761,14 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 "size=$size, " +
                 "changed=$changed, " +
                 "closed=$closed, " +
+                "readState=$readState, " +
                 "source=${_sourceWrapper?.run { "(hasMoreData=$hasMoreData)" }}" +
                 ")"
         }
 
         private enum class State { ACTUAL, MOVED, REMOVED }
+
+        enum class ReadState { START, IN_PROGRESS, FIN }
 
         companion object {
             private val UNKNOWN_STATE = FileState(FileTime.fromMillis(0), -1)
@@ -770,6 +802,11 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     companion object {
         private val LOGGER = KotlinLogging.logger { }
+
+        const val MESSAGE_STATUS_PROPERTY = "th2.read.order_marker"
+        const val MESSAGE_STATUS_SINGLE = "single"
+        const val MESSAGE_STATUS_FIRST = "start"
+        const val MESSAGE_STATUS_LAST = "fin"
 
         private fun BasicFileAttributes.toFileState() = FileState(lastModifiedTime(), size())
         private val CommonFileReaderConfiguration.unlimitedPublication: Boolean
