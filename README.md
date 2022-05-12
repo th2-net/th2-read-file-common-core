@@ -122,7 +122,7 @@ Each file will produce group of messages that can include `th2.read.order_marker
 until some messages will be actually sent.
  * If file produced only one message, it will be marked as `single` 
 
- **NOTE**: If option `leaveLastFileOpen` was turned on means no flags will be generated, this option provides continues data without certain end
+ **NOTE**: If option `leaveLastFileOpen` is turned on means no flags will be generated because in this case we cannot determinate the last message read from the file
 
 ## Changes
 
