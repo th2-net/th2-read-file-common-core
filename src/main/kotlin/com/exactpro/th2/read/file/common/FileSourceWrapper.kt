@@ -16,7 +16,7 @@
 
 package com.exactpro.th2.read.file.common
 
-interface FileSourceWrapper<T : AutoCloseable> : AutoCloseable {
+interface FileSourceWrapper<out T : AutoCloseable> : AutoCloseable {
     val source: T
     val hasMoreData: Boolean
     fun mark()
