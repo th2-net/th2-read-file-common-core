@@ -1,4 +1,4 @@
-# Read file common core for common V3 (1.3.0)
+# Read file common core for common V3 (1.4.0)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 
@@ -125,6 +125,10 @@ until some messages will be actually sent.
  **NOTE**: If option `leaveLastFileOpen` is turned on means no flags will be generated because in this case we cannot determinate the last message read from the file
 
 ## Changes
+
+### 1.4.0
+
++ Added a new interface `EndAwareFileSourceWrapper` that can indicate whether the source does not have any additional data and no data will be added in future
 
 ### 1.3.0
 

@@ -36,14 +36,16 @@ abstract class AbstractReaderTest : AbstractFileTest() {
     @TempDir
     lateinit var dir: Path
     protected val defaultStaleTimeout: Duration = Duration.ofSeconds(1)
-    protected val parser: ContentParser<BufferedReader> = spy(LineParser())
+    protected lateinit var parser: ContentParser<BufferedReader>
     protected val onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit = mock { }
+    protected val onSourceClosed: (StreamId, Path) -> Unit = mock { }
     protected lateinit var reader: AbstractFileReader<BufferedReader>
     protected lateinit var configuration: CommonFileReaderConfiguration
     private lateinit var directoryChecker: DirectoryChecker
 
     @BeforeEach
     internal fun setUp() {
+        parser = spy(createParser())
         configuration = createConfiguration(defaultStaleTimeout)
         directoryChecker = DirectoryChecker(
             dir,
@@ -60,12 +62,19 @@ abstract class AbstractReaderTest : AbstractFileTest() {
             directoryChecker,
             parser,
             movedFileTracker,
-        ) { _, path -> BufferedReaderSourceWrapper(Files.newBufferedReader(path)) }
+            sourceFactory = ::createSource,
+        )
             .readFileImmediately()
             .onStreamData(onStreamData)
+            .onSourceClosed(onSourceClosed)
             .acceptNewerFiles()
             .build()
     }
+
+    protected open fun createParser(): ContentParser<BufferedReader> = LineParser()
+
+    protected open fun createSource(id: StreamId, path: Path): FileSourceWrapper<BufferedReader> =
+        BufferedReaderSourceWrapper(Files.newBufferedReader(path))
 
     protected open fun createExtractor(): (Path) -> Set<StreamId> = { path ->
         path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) }?.let {
