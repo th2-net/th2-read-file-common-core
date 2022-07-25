@@ -33,15 +33,7 @@ open class LineParser @JvmOverloads constructor(
 ) : ContentParser<BufferedReader> {
 
     override fun canParse(streamId: StreamId, source: BufferedReader, considerNoFutureUpdates: Boolean): Boolean {
-        val nextLine: String? = try {
-            source.readLine()
-        } catch (ex: MalformedInputException) {
-            if (considerNoFutureUpdates) {
-                // because there won't be more bytes. so the file is corrupted
-                throw ex
-            }
-            throw RecoverableException(ex)
-        }
+        val nextLine: String? = readNextPossibleLine(source, considerNoFutureUpdates)
         if (source.ready()) {
             return true
         }
@@ -55,6 +47,16 @@ open class LineParser @JvmOverloads constructor(
         } else {
             lineToMessages(streamId, readLine.let(transformer::apply))
         }
+    }
+
+    protected fun readNextPossibleLine(source: BufferedReader, considerNoFutureUpdates: Boolean): String? = try {
+        source.readLine()
+    } catch (ex: MalformedInputException) {
+        if (considerNoFutureUpdates) {
+            // because there won't be more bytes. so the file is corrupted
+            throw ex
+        }
+        throw RecoverableException(ex)
     }
 
     protected open fun lineToMessages(streamId: StreamId, readLine: String): List<RawMessage.Builder> =

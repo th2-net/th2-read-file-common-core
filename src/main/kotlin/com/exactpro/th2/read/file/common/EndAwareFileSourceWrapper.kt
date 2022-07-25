@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,9 @@
 
 package com.exactpro.th2.read.file.common
 
-interface FileSourceWrapper<out T : AutoCloseable> : AutoCloseable {
-    val source: T
-    val hasMoreData: Boolean
-    fun mark()
-    fun reset()
-
-    override fun close() {
-        source.close()
-    }
+interface EndAwareFileSourceWrapper<T : AutoCloseable> : FileSourceWrapper<T> {
+    /**
+     * Returns `true` if there is no more data in file and no data can be added in future
+     */
+    val fileEndReached: Boolean
 }

@@ -278,8 +278,23 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     protected open fun canBeClosed(streamId: StreamId, fileHolder: FileHolder<T>): Boolean {
         val canCloseTheLastFile = canCloseTheLastFileFor(streamId)
-        return (canCloseTheLastFile && noChangesForStaleTimeout(fileHolder)) || !fileHolder.isActual || !fileHolder.stillExist
+        return (canCloseTheLastFile && noChangesForStaleTimeout(fileHolder))
+            || !fileHolder.isActual
+            || !fileHolder.stillExist
+            || canForceFileClosing(streamId, fileHolder, fileHolder.sourceWrapper)
+            || fileHolder.isFileEndReached
     }
+
+    /**
+     * The method is invoked when the read checks whether the file can be closed or not.
+     * Can force closing by custom conditions
+     * @return whether the file should be closed or not
+     */
+    protected open fun canForceFileClosing(
+        streamId: StreamId,
+        fileHolder: FileHolder<T>,
+        sourceWrapper: FileSourceWrapper<T>
+    ): Boolean = false
 
     /**
      * Will be invoked when the new source file for [streamId] is found.
@@ -352,10 +367,10 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
     }
 
-    private fun noChangesForStaleTimeout(fileHolder: FileHolder<T>): Boolean = !fileHolder.changed &&
+    protected fun noChangesForStaleTimeout(fileHolder: FileHolder<T>): Boolean = !fileHolder.changed &&
         abs(System.currentTimeMillis() - fileHolder.lastModificationTime.toMillis()) > configuration.staleTimeout.toMillis()
 
-    private fun canCloseTheLastFileFor(streamId: StreamId): Boolean {
+    protected fun canCloseTheLastFileFor(streamId: StreamId): Boolean {
         return if (configuration.leaveLastFileOpen) {
             hasNewFilesFor(streamId)
         } else {
@@ -678,6 +693,9 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
         val supportRecovery: Boolean
             get() = _sourceWrapper is RecoverableFileSourceWrapper
+
+        internal val isFileEndReached: Boolean
+            get() = (_sourceWrapper as? EndAwareFileSourceWrapper)?.fileEndReached ?: false
 
         internal fun updateState() {
             readState = if (sourceWrapper.hasMoreData) {
