@@ -92,6 +92,9 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             readerState.processedFilesRemoved(paths)
             val holderWithRemovedFiles = currentFilesByStreamId.values
                 .filter { paths.contains(it.path) }
+            if (holderWithRemovedFiles.isEmpty()) {
+                return
+            }
             LOGGER.info { "Files removed: ${holderWithRemovedFiles.joinToString(", ") { it.path.toString() }}" }
             holderWithRemovedFiles.forEach { it.removed() }
         }

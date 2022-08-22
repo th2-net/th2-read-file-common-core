@@ -88,6 +88,9 @@ class MovedFileTracker @JvmOverloads constructor(
 
         events.forEach {
             val kind = it.kind()
+            if (kind != ENTRY_DELETE && kind != ENTRY_CREATE) {
+                return@forEach
+            }
             val fullPath = (it.context() as Path).let(dir::resolve)
 
             LOGGER.trace { "Received event $kind for file $fullPath" }
