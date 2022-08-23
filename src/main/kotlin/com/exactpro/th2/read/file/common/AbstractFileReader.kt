@@ -46,7 +46,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     private val contentParser: ContentParser<T>,
     private val readerState: ReaderState,
     private val readerListener: ReaderListener,
-    private val sequenceGenerator: (StreamId) -> Long = DEFAULT_SEQUENCE_GENERATOR
+    private val sequenceGenerator: (StreamId) -> Long = DEFAULT_SEQUENCE_GENERATOR,
 ) : AutoCloseable {
     constructor(
         configuration: CommonFileReaderConfiguration,
@@ -171,7 +171,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         try {
             do {
                 val holdersByStreamId: Map<StreamId, FileHolder<T>> = holdersToProcess()
-                LOGGER.trace { "Get ${holdersByStreamId.size} holder(s) to process" }
+                LOGGER.debug { "Get ${holdersByStreamId.size} holder(s) to process" }
                 for ((streamId, fileHolder) in holdersByStreamId) {
                     LOGGER.trace { "Processing holder for $streamId. $fileHolder" }
 
@@ -551,10 +551,13 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     }
 
     private fun holdersToProcess(): Map<StreamId, FileHolder<T>> {
+        LOGGER.debug { "Collecting holders to process" }
         if (!configuration.disableFileMovementTracking) {
+            LOGGER.debug { "Pulling file system events" }
             fileTracker.pollFileSystemEvents(10, TimeUnit.MILLISECONDS)
         }
         val newFiles: Map<StreamId, Path> = pullUpdates()
+        LOGGER.debug { "New files: $newFiles" }
         val streams = newFiles.keys + currentFilesByStreamId.keys
 
         val holdersByStreamId: MutableMap<StreamId, FileHolder<T>> = hashMapOf()
@@ -567,7 +570,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             }
 
             if (fileHolder == null) {
-                LOGGER.trace { "Not data for $streamId. Wait for the next attempt" }
+                LOGGER.trace { "No data for $streamId. Wait for the next attempt" }
                 continue
             }
 
@@ -581,7 +584,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             }
             if (!canReadRightNow(fileHolder, configuration.staleTimeout)) {
                 if (addToPending(streamId)) {
-                    LOGGER.debug { "Cannot read ${fileHolder.path} right now. Wait for the next attempt" }
+                    LOGGER.debug { "Cannot read $fileHolder right now. Wait for the next attempt" }
                 } else {
                     LOGGER.trace { "Still cannot read ${fileHolder.path} for stream $streamId. Wait for next attempt" }
                 }
@@ -641,11 +644,16 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     private fun pullUpdates(): Map<StreamId, Path> = directoryChecker.check { streamId, path ->
         val fileHolder = currentFilesByStreamId[streamId]
-        !readerState.isFileProcessed(streamId, path)
-            && !readerState.isStreamIdExcluded(streamId)
-            && isNotTheSameFile(path, fileHolder)
-            && acceptFile(streamId, fileHolder?.path, path).also {
-            LOGGER.trace { "Calling 'acceptFile' for $path (streamId: $streamId). Current file: ${fileHolder?.path}" }
+        when {
+            readerState.isFileProcessed(streamId, path) -> false
+            readerState.isStreamIdExcluded(streamId) -> {
+                LOGGER.warn { "StreamID $streamId is excluded from further processing" }
+                readerState.fileProcessed(streamId, path)
+                false
+            }
+            else -> isNotTheSameFile(path, fileHolder) && acceptFile(streamId, fileHolder?.path, path).also {
+                LOGGER.trace { "Calling 'acceptFile' for $path (streamId: $streamId). Current file: ${fileHolder?.path} with result $it" }
+            }
         }
     }
 
