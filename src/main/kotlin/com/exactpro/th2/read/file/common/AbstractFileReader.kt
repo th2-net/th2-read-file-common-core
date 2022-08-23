@@ -440,7 +440,14 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     ) {
         LOGGER.debug { "Terminating source from file ${fileHolder.path} for stream $streamId" }
         terminateSource(streamId, fileHolder)
-        readerState.excludeStreamId(streamId)
+        if (configuration.continueOnFailure) {
+            LOGGER.warn { "Continue processing files for stream $streamId ignoring error when reading file ${fileHolder.path}: $cause" }
+            if (fileHolder.stillExist) {
+                readerState.fileProcessed(streamId, fileHolder.path)
+            }
+        } else {
+            readerState.excludeStreamId(streamId)
+        }
         onSourceCorrupted(streamId, fileHolder.path, cause)
     }
 

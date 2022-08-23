@@ -1,4 +1,4 @@
-# Read file common core for common V3 (1.4.0)
+# Read file common core for common V3 (1.5.0)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 
@@ -105,6 +105,14 @@ class CommonFileReaderConfiguration(
      * If this setting is set to `false` the error will be reported for the StreamId and not more data will be read.
      */
     val allowFileTruncate: Boolean = false,
+
+    /**
+     * If enabled the reader will continue processing files for **StreamID** if an error was occurred when processing files for that stream.
+     * The file that caused an error will be skipped and marked as processed.
+     *
+     * If disabled the reader will stop processing files for **StreamID** if any error was occurred
+     */
+    val continueOnFailure: Boolean = false,
 )
 ```
 
@@ -125,6 +133,10 @@ until some messages will be actually sent.
  **NOTE**: If option `leaveLastFileOpen` is turned on means no flags will be generated because in this case we cannot determinate the last message read from the file
 
 ## Changes
+
+### 1.5.0
+
++ Added `continueOnFailure` option to continue processing files for **StreamId** if an error is occurred during file processing for that **StreamId**
 
 ### 1.4.0
 

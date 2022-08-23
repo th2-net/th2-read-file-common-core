@@ -76,6 +76,16 @@ class CommonFileReaderConfiguration @JvmOverloads constructor(
      * If this setting is set to `false` the error will be reported for the StreamId and not more data will be read.
      */
     val allowFileTruncate: Boolean = false,
+
+    /**
+     * If enabled the reader will continue processing files for **StreamID** if an error was occurred when processing files for that stream.
+     * The file that caused an error will be skipped and marked as processed.
+     *
+     * If disabled the reader will stop processing files for **StreamID** if any error was occurred.
+     *
+     * NOTE: this parameter might cause gaps in red data
+     */
+    val continueOnFailure: Boolean = false,
 ) {
     init {
         check(staleTimeout.toMillis() > 0) { "'${::staleTimeout.name}' must be positive" }
