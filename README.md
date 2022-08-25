@@ -137,6 +137,7 @@ until some messages will be actually sent.
 ### 1.5.0
 
 + Added `continueOnFailure` option to continue processing files for **StreamId** if an error is occurred during file processing for that **StreamId**
++ Allow zero stale timeout
 
 ### 1.4.0
 

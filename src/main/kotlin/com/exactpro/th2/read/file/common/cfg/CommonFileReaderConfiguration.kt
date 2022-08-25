@@ -88,7 +88,7 @@ class CommonFileReaderConfiguration @JvmOverloads constructor(
     val continueOnFailure: Boolean = false,
 ) {
     init {
-        check(staleTimeout.toMillis() > 0) { "'${::staleTimeout.name}' must be positive" }
+        check(staleTimeout.toMillis() >= 0) { "'${::staleTimeout.name}' must be positive or 0 (zero)" }
         check(maxPublicationDelay.toMillis() >= 0) { "'${::maxPublicationDelay.name}' must be positive or zero" }
         check(maxBatchSize >= 0) { "'${::maxBatchSize.name}' must be positive or zero" }
         check(maxBatchesPerSecond == UNLIMITED_PUBLICATION || maxBatchesPerSecond > 0) {
