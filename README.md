@@ -154,6 +154,8 @@ The common-read-core exports the following metrics:
 
 + Added `continueOnFailure` option to continue processing files for **StreamId** if an error is occurred during file processing for that **StreamId**
 + Allow zero stale timeout
++ Added metrics for reader performance
++ Caching of directory updates during each processing iteration
 
 ### 1.4.0
 
