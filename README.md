@@ -130,7 +130,23 @@ Each file will produce group of messages that can include `th2.read.order_marker
 until some messages will be actually sent.
  * If file produced only one message, it will be marked as `single` 
 
- **NOTE**: If option `leaveLastFileOpen` is turned on means no flags will be generated because in this case we cannot determinate the last message read from the file
+ **NOTE**: If option `leaveLastFileOpen` is turned on means no flags will be generated because in this case the last message read from the file cannot be determinate
+
+#### Metrics
+
+The common-read-core exports the following metrics:
+
++ Files:
+  + **th2_read_files_in_dir_current** - the current number of files in directory that can be processed or was processed by the reader
+  + **th2_read_processed_files_count** - the number of files that was handled by the reader with their state:
+    + found - reader found the files and start processing it
+    + processed - reader have processed the file and closed it
+    + error - an error was occurred during file processing
+    + dropped - the stream ID corresponding to the file was added to ignore list (because of previous error) and file was not processed
++ Processing time:
+  + **th2_read_processing_time** - the time that was spent by the reader to perform a certain action:
+    + pull - gathering files to process
+    + read - reading a message from the file
 
 ## Changes
 

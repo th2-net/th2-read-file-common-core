@@ -16,6 +16,7 @@
 
 package com.exactpro.th2.read.file.common
 
+import com.exactpro.th2.read.file.common.metric.FilesMetric
 import mu.KotlinLogging
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
@@ -63,6 +64,7 @@ class DirectoryChecker(
             dirStream.filter(::filterFile).toList()
         }
 
+        FilesMetric.setFilesInDirectory(filesInDirectory.size)
         LOGGER.trace { "Collected ${filesInDirectory.size} file(s): $filesInDirectory" }
 
         val filesByStreamId = hashMapOf<StreamId, MutableList<Path>>()
