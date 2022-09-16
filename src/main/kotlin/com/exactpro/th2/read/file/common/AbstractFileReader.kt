@@ -73,6 +73,8 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     private val currentFilesByStreamId: MutableMap<StreamId, FileHolder<T>> = ConcurrentHashMap()
     private val contentByStreamId: MutableMap<StreamId, PublicationHolder> = ConcurrentHashMap()
     private val pendingStreams: MutableSet<StreamId> = ConcurrentHashMap.newKeySet()
+    @Volatile
+    private var cachedUpdates: Map<StreamId, Path> = emptyMap()
 
     private lateinit var fileTracker: MovedFileTracker
     private val trackerListener = object : MovedFileTracker.FileTrackerListener {
@@ -576,7 +578,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             LOGGER.debug { "Pulling file system events" }
             fileTracker.pollFileSystemEvents(10, TimeUnit.MILLISECONDS)
         }
-        val newFiles: Map<StreamId, Path> = pullUpdates()
+        val newFiles: Map<StreamId, Path> = pullUpdates(useCache = false)
         LOGGER.debug { "New files: $newFiles" }
         val streams = newFiles.keys + currentFilesByStreamId.keys
 
@@ -667,19 +669,26 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         return publicationHolder.isLimitExceeded(limit)
     }
 
-    private fun pullUpdates(): Map<StreamId, Path> = directoryChecker.check { streamId, path ->
-        val fileHolder = currentFilesByStreamId[streamId]
-        when {
-            readerState.isFileProcessed(streamId, path) -> false
-            readerState.isStreamIdExcluded(streamId) -> {
-                LOGGER.warn { "StreamID $streamId is excluded from further processing" }
-                FilesMetric.incStatus(FilesMetric.ProcessStatus.DROPPED)
-                readerState.fileProcessed(streamId, path)
-                false
+    private fun pullUpdates(useCache: Boolean = true): Map<StreamId, Path> {
+        if (useCache && cachedUpdates.isNotEmpty()) {
+            return cachedUpdates
+        }
+        return directoryChecker.check { streamId, path ->
+            val fileHolder = currentFilesByStreamId[streamId]
+            when {
+                readerState.isFileProcessed(streamId, path) -> false
+                readerState.isStreamIdExcluded(streamId) -> {
+                    LOGGER.warn { "StreamID $streamId is excluded from further processing" }
+                    FilesMetric.incStatus(FilesMetric.ProcessStatus.DROPPED)
+                    readerState.fileProcessed(streamId, path)
+                    false
+                }
+                else -> isNotTheSameFile(path, fileHolder) && acceptFile(streamId, fileHolder?.path, path).also {
+                    LOGGER.trace { "Calling 'acceptFile' for $path (streamId: $streamId). Current file: ${fileHolder?.path} with result $it" }
+                }
             }
-            else -> isNotTheSameFile(path, fileHolder) && acceptFile(streamId, fileHolder?.path, path).also {
-                LOGGER.trace { "Calling 'acceptFile' for $path (streamId: $streamId). Current file: ${fileHolder?.path} with result $it" }
-            }
+        }.also {
+            cachedUpdates = it
         }
     }
 
