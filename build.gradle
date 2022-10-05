@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        koltin_version = '1.4.32'
+        koltin_version = '1.6.21'
     }
 }
 
@@ -8,7 +8,7 @@ plugins {
     id 'java-library'
     id 'org.jetbrains.kotlin.jvm' version "$koltin_version"
     id 'maven-publish'
-    id "io.github.gradle-nexus.publish-plugin" version "1.0.0"
+    id "io.github.gradle-nexus.publish-plugin" version "1.1.0"
     id 'signing'
     id 'org.jetbrains.dokka' version "$koltin_version"
 }
@@ -46,14 +46,12 @@ compileTestKotlin {
 }
 
 dependencies {
-    api platform('com.exactpro.th2:bom:3.0.0')
+    api platform('com.exactpro.th2:bom:4.0.1')
 
-    api 'com.exactpro.th2:grpc-common:3.1.2'
+    api 'com.exactpro.th2:grpc-common:3.11.1'
 
     implementation 'com.google.guava:guava'
-    implementation "org.jetbrains.kotlin:kotlin-stdlib"
-
-    implementation 'io.github.microutils:kotlin-logging:1.7.9'
+    implementation 'io.github.microutils:kotlin-logging:2.1.23'
 
     implementation "org.slf4j:slf4j-api"
 
@@ -61,11 +59,11 @@ dependencies {
         because('performance metric for grafana')
     }
 
-    testImplementation "org.slf4j:slf4j-log4j12"
+    testImplementation "org.apache.logging.log4j:log4j-slf4j-impl"
     testImplementation 'org.apache.commons:commons-lang3:3.12.0'
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.7.0'
-    testImplementation 'io.strikt:strikt-jvm:0.30.1'
-    testImplementation 'org.mockito.kotlin:mockito-kotlin:3.1.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.0'
+    testImplementation 'io.strikt:strikt-jvm:0.34.1'
+    testImplementation 'org.mockito.kotlin:mockito-kotlin:3.2.0'
 
     dokkaJavadocPlugin "org.jetbrains.dokka:kotlin-as-java-plugin:$koltin_version"
 }
