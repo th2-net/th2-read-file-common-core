@@ -1,4 +1,4 @@
-# Read file common core for common V3 (1.5.0)
+# Read file common core for common (1.5.0)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 
@@ -156,6 +156,11 @@ The common-read-core exports the following metrics:
 + Allow zero stale timeout
 + Added metrics for reader performance
 + Caching of directory updates during each processing iteration
++ Dependencies with vulnerabilities was updated:
+    + Kotlin updated from `1.4.32` to `1.6.21`
+    + BOM updated from `3.0.0` to `4.0.1`
+    + grpc-common updated from `3.1.2` to `3.11.1`
+    + log4j 1.2 removed from dependencies
 
 ### 1.4.0
 
