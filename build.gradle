@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        koltin_version = '1.4.32'
+        koltin_version = '1.6.21'
     }
 }
 
@@ -11,6 +11,12 @@ plugins {
     id "io.github.gradle-nexus.publish-plugin" version "1.0.0"
     id 'signing'
     id 'org.jetbrains.dokka' version "$koltin_version"
+    id "org.owasp.dependencycheck" version "7.3.0"
+}
+
+dependencyCheck {
+    format='HTML'
+    failBuildOnCVSS=5
 }
 
 group 'com.exactpro.th2'
@@ -46,21 +52,23 @@ compileTestKotlin {
 }
 
 dependencies {
-    api platform('com.exactpro.th2:bom:3.0.0')
+    api platform('com.exactpro.th2:bom:4.0.2')
 
-    api 'com.exactpro.th2:grpc-common:3.1.2'
+    api 'com.exactpro.th2:grpc-common:3.11.1'
 
     implementation 'com.google.guava:guava'
     implementation "org.jetbrains.kotlin:kotlin-stdlib"
 
-    implementation 'io.github.microutils:kotlin-logging:1.7.9'
+    implementation 'io.github.microutils:kotlin-logging:3.0.2'
 
-    implementation "org.slf4j:slf4j-log4j12"
-    implementation "org.slf4j:slf4j-api"
+
+    implementation 'org.apache.logging.log4j:log4j-1.2-api'
+    implementation 'org.apache.logging.log4j:log4j-core'
+    implementation 'org.apache.logging.log4j:log4j-slf4j2-impl'
 
     testImplementation 'org.apache.commons:commons-lang3:3.12.0'
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.7.0'
-    testImplementation 'io.strikt:strikt-jvm:0.30.1'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.0'
+    testImplementation 'io.strikt:strikt-jvm:0.34.1'
     testImplementation 'org.mockito.kotlin:mockito-kotlin:3.1.0'
 
     dokkaJavadocPlugin "org.jetbrains.dokka:kotlin-as-java-plugin:$koltin_version"
