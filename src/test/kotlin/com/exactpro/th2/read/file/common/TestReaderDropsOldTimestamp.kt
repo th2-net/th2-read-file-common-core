@@ -19,6 +19,7 @@ package com.exactpro.th2.read.file.common
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.extensions.toTimestamp
+import com.exactpro.th2.read.file.common.impl.OldTimestampMessageFilter
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
 import org.mockito.kotlin.any
@@ -29,56 +30,61 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import strikt.api.expectThat
-import strikt.assertions.all
 import strikt.assertions.get
+import strikt.assertions.hasSize
 import strikt.assertions.isEqualTo
 import java.io.BufferedReader
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 
-class TestReaderFixTimestamp : AbstractReaderTest() {
+internal class TestReaderDropsOldTimestamp : AbstractReaderTest() {
     override fun createConfiguration(defaultStaleTimeout: Duration): CommonFileReaderConfiguration {
         return CommonFileReaderConfiguration(
             staleTimeout = defaultStaleTimeout,
-            maxPublicationDelay = Duration.ofSeconds(0),
-            fixTimestamp = true,
+            maxPublicationDelay = Duration.ofSeconds(1),
         )
     }
 
+    override val messageFilters: Collection<ReadMessageFilter>
+        get() = listOf(OldTimestampMessageFilter)
+
     @Test
-    internal fun `fixes timestamp`() {
-        doReturn(true, false).whenever(parser).canParse(any(), any(), any())
+    fun `applies old timestamp filter`() {
+        doReturn(true, true, true, false).whenever(parser).canParse(any(), any(), any())
         val now = Instant.now()
         val values = listOf(
-            RawMessage.newBuilder().apply {
-                metadataBuilder.timestamp = now.toTimestamp()
-                metadataBuilder.idBuilder.sequence = 1
-            },
-            RawMessage.newBuilder().apply {
-                metadataBuilder.timestamp = now.minusSeconds(1).toTimestamp()
-                metadataBuilder.idBuilder.sequence = 2
-            }
+            RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.toTimestamp() },
+            RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.minusSeconds(1).toTimestamp() },
+            RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.plusNanos(1).toTimestamp() },
         )
+        var answerIndex = 0
         doAnswer {
             val source = it.arguments[1] as BufferedReader
             source.readLine()
-            return@doAnswer values
+            return@doAnswer listOf(values[answerIndex++])
         }.whenever(parser).parse(any(), any())
 
         createFile(dir, "A-0").also {
-            appendTo(it, "Line", lfInEnd = true)
+            appendTo(it, "Line1", lfInEnd = true)
+            appendTo(it, "Line2", lfInEnd = true)
+            appendTo(it, "Line3", lfInEnd = true)
         }
         assertTimeoutPreemptively(configuration.staleTimeout.plusMillis(200)) {
             reader.processUpdates()
         }
+        Thread.sleep(1000)
+        assertTimeoutPreemptively(Duration.ofMillis(200)) {
+            reader.processUpdates()
+        }
 
-        val expectedTimestamp = now.toTimestamp()
         val argumentCaptor = argumentCaptor<List<RawMessage.Builder>>()
         verify(onStreamData).invoke(any(), argumentCaptor.capture())
-
         expectThat(argumentCaptor.lastValue)
-            .all {
-                get { metadataBuilder }.get { timestamp }.isEqualTo(expectedTimestamp)
+            .hasSize(2)
+            .apply {
+                get(0).get { metadataBuilder }.get { timestamp }.isEqualTo(now.toTimestamp())
+                get(1).get { metadataBuilder }.get { timestamp }.isEqualTo(now.plusNanos(1).toTimestamp())
             }
     }
 }

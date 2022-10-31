@@ -68,6 +68,7 @@ abstract class AbstractReaderTest : AbstractFileTest() {
             .onStreamData(onStreamData)
             .onSourceClosed(onSourceClosed)
             .acceptNewerFiles()
+            .setMessageFilters(messageFilters)
             .build()
     }
 
@@ -83,6 +84,8 @@ abstract class AbstractReaderTest : AbstractFileTest() {
     }
 
     abstract fun createConfiguration(defaultStaleTimeout: Duration): CommonFileReaderConfiguration
+
+    protected open val messageFilters: Collection<ReadMessageFilter> = emptyList()
 
     @AfterEach
     internal fun tearDown() {

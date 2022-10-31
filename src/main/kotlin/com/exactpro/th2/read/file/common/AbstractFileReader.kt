@@ -18,6 +18,8 @@ package com.exactpro.th2.read.file.common
 
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageMetadata
+import com.exactpro.th2.common.grpc.RawMessageMetadataOrBuilder
+import com.exactpro.th2.common.grpc.RawMessageOrBuilder
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.extensions.toInstant
 import com.exactpro.th2.read.file.common.extensions.toTimestamp
@@ -29,6 +31,7 @@ import com.exactpro.th2.read.file.common.recovery.RecoverableFileSourceWrapper
 import com.exactpro.th2.read.file.common.state.ReaderState
 import com.exactpro.th2.read.file.common.state.StreamData
 import com.google.protobuf.TextFormat.shortDebugString
+import com.google.protobuf.Timestamp
 import mu.KotlinLogging
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
@@ -49,6 +52,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     private val readerState: ReaderState,
     private val readerListener: ReaderListener,
     private val sequenceGenerator: (StreamId) -> Long = DEFAULT_SEQUENCE_GENERATOR,
+    private val messageFilters: Collection<ReadMessageFilter> = emptyList(),
 ) : AutoCloseable {
     constructor(
         configuration: CommonFileReaderConfiguration,
@@ -236,33 +240,52 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             return
         }
 
-        finalContent.also { content ->
-            if (!configuration.leaveLastFileOpen) {
-                val lastState = fileHolder.readState
-                fileHolder.updateState()
-
-                if (content.size == 1 && lastState == FileHolder.ReadState.START && fileHolder.readState == FileHolder.ReadState.FIN) {
-                    content.first().markSingle()
-                } else {
-                    if (lastState == FileHolder.ReadState.START) content.first().markFirst()
-                    if (fileHolder.readState == FileHolder.ReadState.FIN) content.last().markLast()
-                }
-            }
-
+        finalContent.also { originalContent ->
             val streamData = readerState[streamId]
-            setCommonInformation(streamId, content, streamData)
+            val filteredContent: Collection<RawMessage.Builder> = originalContent.filterReadContent(streamId, streamData)
+            if (filteredContent.isEmpty()) {
+                LOGGER.trace { "No content messages left for $streamId after filtering" }
+                return@also
+            }
+            if (!configuration.leaveLastFileOpen) {
+                filteredContent.markMessagesWithTag(fileHolder)
+            }
+            setCommonInformation(streamId, filteredContent, streamData)
             try {
-                validateContent(streamId, content, streamData)
+                validateContent(streamId, filteredContent, streamData)
             } catch (ex: Exception) {
                 LOGGER.error(ex) {
                     "Failed to validate content for stream $streamId ($fileHolder):" +
-                        " ${content.joinToString { shortDebugString(it) }}"
+                        " ${filteredContent.joinToString { shortDebugString(it) }}"
                 }
                 failStreamId(streamId, fileHolder, ex)
                 return@also
             }
-            tryPublishContent(streamId, content)
+            tryPublishContent(streamId, filteredContent)
         }
+    }
+
+    private fun Collection<RawMessage.Builder>.markMessagesWithTag(fileHolder: FileHolder<T>) {
+        val lastState = fileHolder.readState
+        fileHolder.updateState()
+
+        if (size == 1 && lastState == FileHolder.ReadState.START && fileHolder.readState == FileHolder.ReadState.FIN) {
+            first().markSingle()
+        } else {
+            if (lastState == FileHolder.ReadState.START) first().markFirst()
+            if (fileHolder.readState == FileHolder.ReadState.FIN) last().markLast()
+        }
+    }
+
+    private fun Collection<RawMessage.Builder>.filterReadContent(
+        streamId: StreamId,
+        streamData: StreamData?,
+    ): Collection<RawMessage.Builder> = filter { msg ->
+        val filter = messageFilters.find { it.drop(streamId, msg, streamData) }
+        if (filter != null) {
+            LOGGER.debug { "Content '${msg.toShortString()}' in $streamId stream was filtered by ${filter::class.java.simpleName} filter" }
+        }
+        filter == null
     }
 
     private fun RawMessage.Builder.markFirst(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_FIRST)
@@ -880,3 +903,10 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         const val UNLIMITED_PUBLICATION = -1
     }
 }
+
+private fun RawMessageOrBuilder.toShortString(): String {
+    return "timestamp: ${metadata.timestampOrNull?.toInstant()}; size: ${body.size()}"
+}
+
+private val RawMessageMetadataOrBuilder.timestampOrNull: Timestamp?
+    get() = if (hasTimestamp()) timestamp else null
