@@ -297,7 +297,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     ): Collection<RawMessage.Builder> = filter { msg ->
         val filter = messageFilters.find { it.drop(streamId, msg, streamData) }
         if (filter != null) {
-            LOGGER.debug { "Content '${msg.toShortString()}' in $streamId stream was filtered by ${filter::class.java.simpleName} filter" }
+            LOGGER.debug { "Content '${msg.toShortString()}' in $streamId stream was filtered by ${filter::class.java.simpleName} filter. Stream data: $streamData" }
         }
         filter == null
     }
