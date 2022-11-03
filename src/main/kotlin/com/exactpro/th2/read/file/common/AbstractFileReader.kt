@@ -79,6 +79,8 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     private val pendingStreams: MutableSet<StreamId> = ConcurrentHashMap.newKeySet()
     @Volatile
     private var cachedUpdates: Map<StreamId, Path> = emptyMap()
+    @Volatile
+    private var lastPullUpdates: Instant = Instant.MIN
 
     private lateinit var fileTracker: MovedFileTracker
     private val trackerListener = object : MovedFileTracker.FileTrackerListener {
@@ -177,11 +179,18 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
         LOGGER.debug { "Checking updates" }
         try {
+            var holdersByStreamId: Map<StreamId, FileHolder<T>> = emptyMap()
+            var updateRequired = true
             do {
-                val holdersByStreamId: Map<StreamId, FileHolder<T>> = ReaderMetric.measurePulling { holdersToProcess() }
+                if (updateRequired) {
+                    holdersByStreamId = ReaderMetric.measurePulling { holdersToProcess() }
+                    lastPullUpdates = Instant.now()
+                    updateRequired = false
+                }
                 LOGGER.debug { "Get ${holdersByStreamId.size} holder(s) to process" }
                 for ((streamId, fileHolder) in holdersByStreamId) {
-                    ReaderMetric.measureReading { processHolderForStream(streamId, fileHolder) }
+                    val holderProcessed = ReaderMetric.measureReading { processHolderForStream(streamId, fileHolder) }
+                    updateRequired = updateRequired or holderProcessed
                 }
 
                 for ((streamId, holder) in contentByStreamId) {
@@ -190,6 +199,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                     }
                     holder.tryToPublish(streamId)
                 }
+                updateRequired = updateRequired or (Duration.between(lastPullUpdates, Instant.now()) >= configuration.minDelayBetweenUpdates)
             } while (holdersByStreamId.isNotEmpty() && !Thread.currentThread().isInterrupted)
             LOGGER.debug { "Checking finished" }
         } catch (ex: TruncatedSourceException) {
@@ -205,15 +215,18 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
     }
 
+    /**
+     * Returns `true` if current file was fully processed (normally or with error)
+     */
     private fun processHolderForStream(
         streamId: StreamId,
         fileHolder: FileHolder<T>
-    ) {
+    ): Boolean {
         LOGGER.trace { "Processing holder for $streamId. $fileHolder" }
 
         if (isPublicationLimitExceeded(streamId)) {
             LOGGER.trace { "The publication limit in ${configuration.maxBatchesPerSecond} batch/s for $streamId exceeded. Suspend reading" }
-            return
+            return false
         }
 
         val readContent: Collection<RawMessage.Builder> = try {
@@ -222,7 +235,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             LOGGER.error(ex) { "Error during reading messages for $streamId. File holder: $fileHolder" }
             readerListener.onError(streamId, "Cannot read data from the file ${fileHolder.path}", ex)
             failStreamId(streamId, fileHolder, ex)
-            return
+            return true
         }
 
         val sourceWrapper: FileSourceWrapper<T> = fileHolder.sourceWrapper
@@ -230,14 +243,14 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             if (!sourceWrapper.hasMoreData) {
                 closeSourceIfAllowed(streamId, fileHolder)
             }
-            return
+            return true
         }
 
         val finalContent = onContentRead(streamId, fileHolder.path, readContent)
 
         if (finalContent.isEmpty()) {
             LOGGER.trace { "No data to process after 'onContentRead' call, current state: ${fileHolder.readState}" }
-            return
+            return false
         }
 
         finalContent.also { originalContent ->
@@ -263,6 +276,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             }
             tryPublishContent(streamId, filteredContent)
         }
+        return false
     }
 
     private fun Collection<RawMessage.Builder>.markMessagesWithTag(fileHolder: FileHolder<T>) {

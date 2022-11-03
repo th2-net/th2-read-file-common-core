@@ -86,6 +86,13 @@ class CommonFileReaderConfiguration @JvmOverloads constructor(
      * NOTE: this parameter might cause gaps in red data
      */
     val continueOnFailure: Boolean = false,
+
+    /**
+     * The min amount of time that must pass before the read will pull updates from the files system if it constantly read data.
+     * This parameter is ignored if:
+     * + reading from one of the streams has been finished
+     */
+    val minDelayBetweenUpdates: Duration = Duration.ZERO
 ) {
     init {
         check(staleTimeout.toMillis() >= 0) { "'${::staleTimeout.name}' must be positive or 0 (zero)" }

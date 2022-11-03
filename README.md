@@ -113,6 +113,13 @@ class CommonFileReaderConfiguration(
      * If disabled the reader will stop processing files for **StreamID** if any error was occurred
      */
     val continueOnFailure: Boolean = false,
+
+    /**
+     * The min amount of time that must pass before the read will pull updates from the files system if it constantly read data.
+     * This parameter is ignored if:
+     * + reading from one of the streams has been finished
+     */
+    val minDelayBetweenUpdates: Duration = Duration.ZERO
 )
 ```
 
@@ -153,6 +160,9 @@ The common-read-core exports the following metrics:
 ### 1.5.0
 
 + Added `continueOnFailure` option to continue processing files for **StreamId** if an error is occurred during file processing for that **StreamId**
++ Added `minDelayBetweenUpdates` option to specify the min delay between pulling updates from the file system.
+  Can improve the performance. However, it will take longer to handle a new file.
+  It will be found only if one of the current sources is finished or the time since the last updates check exceeds the `minDelayBetweenUpdates`.
 + Allow zero stale timeout
 + Added metrics for reader performance
 + Caching of directory updates during each processing iteration
