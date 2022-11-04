@@ -735,7 +735,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     ): Boolean {
         return fileHolder == null
             || (!fileHolder.isActual && fileHolder.path == path)
-            || (!configuration.disableFileMovementTracking && !fileTracker.isSameFiles(fileHolder.path, path))
+            || (if (configuration.disableFileMovementTracking) fileHolder.path != path else !fileTracker.isSameFiles(fileHolder.path, path))
     }
 
     protected class FileHolder<T : AutoCloseable>(
