@@ -272,7 +272,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                         " ${filteredContent.joinToString { shortDebugString(it) }}"
                 }
                 failStreamId(streamId, fileHolder, ex)
-                return@also
+                return true
             }
             tryPublishContent(streamId, filteredContent)
         }
