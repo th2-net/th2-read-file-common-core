@@ -222,7 +222,11 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         streamId: StreamId,
         fileHolder: FileHolder<T>
     ): Boolean {
-        LOGGER.trace { "Processing holder for $streamId. $fileHolder" }
+        val streamData = readerState[streamId]
+        LOGGER.trace { "Processing holder for $streamId ($streamData). $fileHolder" }
+        if (checkFileDrop(fileHolder, streamId, streamData)) {
+            return true
+        }
 
         if (isPublicationLimitExceeded(streamId)) {
             LOGGER.trace { "The publication limit in ${configuration.maxBatchesPerSecond} batch/s for $streamId exceeded. Suspend reading" }
@@ -254,7 +258,6 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
 
         finalContent.also { originalContent ->
-            val streamData = readerState[streamId]
             val filteredContent: Collection<RawMessage.Builder> = originalContent.filterReadContent(streamId, streamData)
             if (filteredContent.isEmpty()) {
                 LOGGER.trace { "No content messages left for $streamId after filtering" }
@@ -275,6 +278,21 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 return true
             }
             tryPublishContent(streamId, filteredContent)
+        }
+        return false
+    }
+
+    private fun checkFileDrop(
+        fileHolder: FileHolder<T>,
+        streamId: StreamId,
+        streamData: StreamData?
+    ): Boolean {
+        val fileInfo = FilterFileInfo(fileHolder.path, fileHolder.lastModificationTime.toInstant(), configuration.staleTimeout)
+        val filter = messageFilters.find { it.drop(streamId, fileInfo, streamData) }
+        if (filter != null) {
+            LOGGER.info { "Source $fileInfo is dropped by filter ${filter::class.simpleName}. Stream data: $streamData" }
+            closeSourceIfAllowed(streamId, fileHolder, FilesMetric.ProcessStatus.DROPPED)
+            return true
         }
         return false
     }
@@ -474,11 +492,12 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     private fun closeSourceIfAllowed(
         streamId: StreamId,
         fileHolder: FileHolder<T>,
+        terminalStatus: FilesMetric.ProcessStatus = FilesMetric.ProcessStatus.PROCESSED,
     ) {
         val path = fileHolder.path
         LOGGER.debug { "Source for $path file does not have any additional data yet. Check if we can close it" }
         if (canBeClosed(streamId, fileHolder)) {
-            FilesMetric.incStatus(FilesMetric.ProcessStatus.PROCESSED)
+            FilesMetric.incStatus(terminalStatus)
             terminateSource(streamId, fileHolder)
             onSourceClosed(streamId, fileHolder.path)
         }

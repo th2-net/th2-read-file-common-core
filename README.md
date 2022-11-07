@@ -155,6 +155,19 @@ The common-read-core exports the following metrics:
     + pull - gathering files to process
     + read - reading a message from the file
 
+#### Build-in filters
+
+The common core part for read contains build-in filters to filter up the content.
+It filters messages and files based on the current state and file information
+
+##### OldTimestampMessageFilter
+
+This filters drops messages and files that contains old data.
+
+The message will be dropped if the current state for StreamId contains **lastTimestamp** greater or equals to the timestamp from message.
+
+The file will be dropped if its last modification time is less than **lastTimestamp** for current StreamID + **staleTimeout**.
+
 ## Changes
 
 ### 1.5.0
