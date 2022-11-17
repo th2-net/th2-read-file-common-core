@@ -22,11 +22,16 @@ import com.exactpro.th2.read.file.common.extensions.toTimestamp
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import strikt.api.expectThat
+import strikt.assertions.all
+import strikt.assertions.get
+import strikt.assertions.isEqualTo
 import java.io.BufferedReader
 import java.time.Duration
 import java.time.Instant
@@ -45,8 +50,14 @@ class TestReaderFixTimestamp : AbstractReaderTest() {
         doReturn(true, false).whenever(parser).canParse(any(), any(), any())
         val now = Instant.now()
         val values = listOf(
-            RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.toTimestamp() },
-            RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.minusSeconds(1).toTimestamp() }
+            RawMessage.newBuilder().apply {
+                metadataBuilder.timestamp = now.toTimestamp()
+                metadataBuilder.idBuilder.sequence = 1
+            },
+            RawMessage.newBuilder().apply {
+                metadataBuilder.timestamp = now.minusSeconds(1).toTimestamp()
+                metadataBuilder.idBuilder.sequence = 2
+            }
         )
         doAnswer {
             val source = it.arguments[1] as BufferedReader
@@ -61,6 +72,13 @@ class TestReaderFixTimestamp : AbstractReaderTest() {
             reader.processUpdates()
         }
 
-        verify(onStreamData).invoke(any(), eq(values))
+        val expectedTimestamp = now.toTimestamp()
+        val argumentCaptor = argumentCaptor<List<RawMessage.Builder>>()
+        verify(onStreamData).invoke(any(), argumentCaptor.capture())
+
+        expectThat(argumentCaptor.lastValue)
+            .all {
+                get { metadataBuilder }.get { timestamp }.isEqualTo(expectedTimestamp)
+            }
     }
 }

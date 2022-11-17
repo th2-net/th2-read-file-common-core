@@ -47,6 +47,18 @@ open class AbstractFileTest {
         }
     }
 
+    protected fun Path.append(vararg lines: String, lfInEnd: Boolean = false) {
+        appendTo(this, *lines, lfInEnd = lfInEnd)
+    }
+
+    protected fun Path.append(bytes: ByteArray) {
+        appendTo(this, bytes)
+    }
+
+    protected fun Path.write(vararg lines: String, lfInEnd: Boolean = false) {
+        writeTo(this, *lines, lfInEnd = lfInEnd)
+    }
+
     private fun write(file: Path, lines: Array<out String>, lfInEnd: Boolean, vararg options: StandardOpenOption) {
         Files.newBufferedWriter(file, *options).use {
             for ((index, line) in lines.withIndex()) {

@@ -113,6 +113,13 @@ class CommonFileReaderConfiguration(
      * If disabled the reader will stop processing files for **StreamID** if any error was occurred
      */
     val continueOnFailure: Boolean = false,
+
+    /**
+     * The min amount of time that must pass before the read will pull updates from the files system if it constantly read data.
+     * This parameter is ignored if:
+     * + reading from one of the streams has been finished
+     */
+    val minDelayBetweenUpdates: Duration = Duration.ZERO
 )
 ```
 
@@ -148,11 +155,27 @@ The common-read-core exports the following metrics:
     + pull - gathering files to process
     + read - reading a message from the file
 
+#### Build-in filters
+
+The common core part for read contains build-in filters to filter up the content.
+It filters messages and files based on the current state and file information
+
+##### OldTimestampMessageFilter
+
+This filters drops messages and files that contains old data.
+
+The message will be dropped if the current state for StreamId contains **lastTimestamp** greater or equals to the timestamp from message.
+
+The file will be dropped if its last modification time is less than **lastTimestamp** for current StreamID + **staleTimeout**.
+
 ## Changes
 
 ### 1.5.0
 
 + Added `continueOnFailure` option to continue processing files for **StreamId** if an error is occurred during file processing for that **StreamId**
++ Added `minDelayBetweenUpdates` option to specify the min delay between pulling updates from the file system.
+  Can improve the performance. However, it will take longer to handle a new file.
+  It will be found only if one of the current sources is finished or the time since the last updates check exceeds the `minDelayBetweenUpdates`.
 + Allow zero stale timeout
 + Added metrics for reader performance
 + Caching of directory updates during each processing iteration
