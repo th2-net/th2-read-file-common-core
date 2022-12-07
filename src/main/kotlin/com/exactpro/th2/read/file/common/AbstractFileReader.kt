@@ -348,7 +348,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     }
 
     protected open fun canBeClosed(streamId: StreamId, fileHolder: FileHolder<T>): Boolean {
-        val canCloseTheLastFile = canCloseTheLastFileFor(streamId)
+        val canCloseTheLastFile = canCloseTheLastFileFor(streamId, fileHolder)
         return (canCloseTheLastFile && noChangesForStaleTimeout(fileHolder))
             || !fileHolder.isActual
             || !fileHolder.stillExist
@@ -441,15 +441,16 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     protected fun noChangesForStaleTimeout(fileHolder: FileHolder<T>): Boolean = !fileHolder.changed &&
         abs(System.currentTimeMillis() - fileHolder.lastModificationTime.toMillis()) > configuration.staleTimeout.toMillis()
 
-    protected fun canCloseTheLastFileFor(streamId: StreamId): Boolean {
+    protected fun canCloseTheLastFileFor(streamId: StreamId, holder: FileHolder<T>): Boolean {
         return if (configuration.leaveLastFileOpen) {
-            hasNewFilesFor(streamId)
+            hasNewFilesFor(streamId, holder)
         } else {
             true
         }
     }
 
-    private fun hasNewFilesFor(streamId: StreamId): Boolean = pullUpdates().containsKey(streamId)
+    private fun hasNewFilesFor(streamId: StreamId, holder: FileHolder<T>): Boolean =
+        pullUpdates()[streamId]?.let { isNotTheSameFile(it, holder) } ?: false
 
     private fun tryPublishContent(
         streamId: StreamId,
