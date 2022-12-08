@@ -23,6 +23,7 @@ import com.exactpro.th2.read.file.common.FilterFileInfo
 import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.extensions.toTimestamp
 import com.exactpro.th2.read.file.common.state.StreamData
+import com.google.protobuf.ByteString
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import strikt.api.expectThat
@@ -47,12 +48,21 @@ internal class TestOldTimestampMessageFilter {
         }
 
         @Test
-        fun `drops when timestamp equals to last timestamp`() {
+        fun `drops when timestamp equals to last timestamp and content is the same`() {
             val timestamp = Instant.now()
-            val builder = createBuilder(timestamp)
-            val streamData = createStreamData(timestamp)
+            val builder = createBuilder(timestamp, ByteString.copyFromUtf8("A"))
+            val streamData = createStreamData(timestamp, ByteString.copyFromUtf8("A"))
 
             expectThat(OldTimestampMessageFilter.drop(streamId, builder, streamData)).isTrue()
+        }
+
+        @Test
+        fun `does not drop when timestamp equals to last timestamp but content is different`() {
+            val timestamp = Instant.now()
+            val builder = createBuilder(timestamp, ByteString.copyFromUtf8("A"))
+            val streamData = createStreamData(timestamp, ByteString.copyFromUtf8("B"))
+
+            expectThat(OldTimestampMessageFilter.drop(streamId, builder, streamData)).isFalse()
         }
 
         @Test
@@ -82,10 +92,11 @@ internal class TestOldTimestampMessageFilter {
             expectThat(OldTimestampMessageFilter.drop(streamId, builder, streamData)).isFalse()
         }
 
-        private fun createBuilder(timestamp: Instant?) = RawMessage.newBuilder()
+        private fun createBuilder(timestamp: Instant?, content: ByteString = ByteString.EMPTY) = RawMessage.newBuilder()
             .apply {
                 if (timestamp == null) return@apply
                 metadataBuilder.timestamp = timestamp.toTimestamp()
+                body = content
             }
     }
 
@@ -139,5 +150,5 @@ internal class TestOldTimestampMessageFilter {
         private fun createFileInfo(timestamp: Instant): FilterFileInfo = FilterFileInfo(Path.of("test"), timestamp, Duration.ofSeconds(1))
     }
 
-    private fun createStreamData(timestamp: Instant) = StreamData(timestamp, -1)
+    private fun createStreamData(timestamp: Instant, content: ByteString = ByteString.EMPTY) = StreamData(timestamp, -1, content)
 }

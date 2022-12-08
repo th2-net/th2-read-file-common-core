@@ -17,6 +17,7 @@
 package com.exactpro.th2.read.file.common.state
 
 import com.exactpro.th2.read.file.common.StreamId
+import com.google.protobuf.ByteString
 import java.nio.file.Path
 import java.time.Instant
 
@@ -43,4 +44,9 @@ data class StreamData(
      * Last sequence used by the [StreamId]
      */
     val lastSequence: Long,
+
+    /**
+     * The content of the last message in [StreamId]
+     */
+    val lastContent: ByteString,
 )

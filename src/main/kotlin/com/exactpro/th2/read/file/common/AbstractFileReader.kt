@@ -600,7 +600,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             lastTime = currentTimestamp
             lastSequence = curSequence
         }
-        readerState[streamId] = StreamData(lastTime, lastSequence)
+        readerState[streamId] = StreamData(lastTime, lastSequence, content.last().body)
     }
 
     private fun RawMessage.Builder.checkTimeAndSequence(

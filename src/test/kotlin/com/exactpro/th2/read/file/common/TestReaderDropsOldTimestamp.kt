@@ -23,6 +23,7 @@ import com.exactpro.th2.read.file.common.extensions.toTimestamp
 import com.exactpro.th2.read.file.common.impl.LineParser
 import com.exactpro.th2.read.file.common.impl.OldTimestampMessageFilter
 import com.exactpro.th2.read.file.common.state.StreamData
+import com.google.protobuf.ByteString
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
 import org.mockito.kotlin.any
@@ -96,7 +97,7 @@ internal class TestReaderDropsOldTimestamp : AbstractReaderTest() {
         createFile(dir, "A-1").apply {
             append("$creationTime", lfInEnd = true)
         }
-        readerState[StreamId("A", Direction.FIRST)] = StreamData(creationTime.minusMillis(1), -1)
+        readerState[StreamId("A", Direction.FIRST)] = StreamData(creationTime.minusMillis(1), -1, ByteString.EMPTY)
 
         assertTimeoutPreemptively(Duration.ofSeconds(1)) {
             reader.processUpdates()

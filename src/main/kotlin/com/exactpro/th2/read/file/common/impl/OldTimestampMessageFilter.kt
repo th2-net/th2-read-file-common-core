@@ -38,7 +38,8 @@ object OldTimestampMessageFilter : ReadMessageFilter {
             return false
         }
         val messageTimestamp = message.metadata.timestamp.toInstant()
-        return streamData.lastTimestamp >= messageTimestamp
+        return streamData.lastTimestamp > messageTimestamp
+            || (streamData.lastTimestamp == messageTimestamp && streamData.lastContent == message.body)
     }
 
     override fun drop(
