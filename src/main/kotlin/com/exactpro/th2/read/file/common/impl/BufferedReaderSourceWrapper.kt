@@ -32,7 +32,7 @@ open class BufferedReaderSourceWrapper<T : BufferedReader>(
     override val hasMoreData: Boolean
         get() = try {
             mark();
-            source.readLine() != null
+            source.ready() && source.readLine() != null
         } finally {
             reset()
         }
