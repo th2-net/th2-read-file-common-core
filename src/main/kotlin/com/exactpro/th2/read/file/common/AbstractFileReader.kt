@@ -641,6 +641,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
         val holdersByStreamId: MutableMap<StreamId, FileHolder<T>> = hashMapOf()
         for (streamId in streams) {
+            LOGGER.debug { "Checking holder for $streamId" }
             val fileHolder = currentFilesByStreamId[streamId] ?: run {
                 newFiles[streamId]?.toFileHolder(streamId)?.also {
                     currentFilesByStreamId[streamId] = it
@@ -653,6 +654,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 continue
             }
 
+            LOGGER.debug { "Refreshing file info for $streamId ($fileHolder)" }
             fileHolder.refreshFileInfo()
             if (fileHolder.truncated) {
                 if (!configuration.allowFileTruncate) {
@@ -661,6 +663,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 LOGGER.info { "File ${fileHolder.path} was truncated. Start reading from the beginning" }
                 fileHolder.reopen()
             }
+            LOGGER.debug { "Checking if can read from source for $streamId ($fileHolder)" }
             if (!canReadRightNow(fileHolder, configuration.staleTimeout)) {
                 if (addToPending(streamId)) {
                     LOGGER.debug { "Cannot read $fileHolder right now. Wait for the next attempt" }
@@ -670,6 +673,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 continue
             }
 
+            LOGGER.debug { "Checking if ${fileHolder.path} source can be closed for stream $streamId" }
             if (!fileHolder.sourceWrapper.hasMoreData && !canBeClosed(streamId, fileHolder)) {
                 if (addToPending(streamId)) {
                     LOGGER.debug {
