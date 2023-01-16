@@ -20,7 +20,7 @@ ext {
     java_version = JavaVersion.VERSION_11
 }
 
-configurations.all {
+configurations.configureEach {
     resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
     resolutionStrategy.cacheDynamicVersionsFor 0, 'seconds'
 }
@@ -91,7 +91,7 @@ jar {
 }
 
 // conditionals for publications
-tasks.withType(PublishToMavenRepository) {
+tasks.withType(PublishToMavenRepository).configureEach {
     onlyIf {
         (repository == publishing.repositories.nexusRepository &&
                 project.hasProperty('nexus_user') &&
@@ -102,9 +102,10 @@ tasks.withType(PublishToMavenRepository) {
                         project.hasProperty('sonatypePassword'))
     }
 }
-tasks.withType(Sign) {
-    onlyIf { project.hasProperty('signingKey') &&
-            project.hasProperty('signingPassword')
+tasks.withType(Sign).configureEach {
+    onlyIf {
+        project.hasProperty('signingKey') &&
+                project.hasProperty('signingPassword')
     }
 }
 // disable running task 'initializeSonatypeStagingRepository' on a gitlab
