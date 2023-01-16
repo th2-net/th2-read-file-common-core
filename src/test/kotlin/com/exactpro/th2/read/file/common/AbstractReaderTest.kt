@@ -18,6 +18,7 @@
 package com.exactpro.th2.read.file.common
 
 import com.exactpro.th2.common.grpc.Direction
+import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.impl.BufferedReaderSourceWrapper
@@ -69,6 +70,7 @@ abstract class AbstractReaderTest : AbstractFileTest() {
             movedFileTracker,
             readerState = readerState,
             sourceFactory = ::createSource,
+            messageIdSupplier = { MessageID.getDefaultInstance() }
         )
             .readFileImmediately()
             .onStreamData(onStreamData)

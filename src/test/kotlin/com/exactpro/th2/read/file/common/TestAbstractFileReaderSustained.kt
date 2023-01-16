@@ -203,8 +203,8 @@ internal class TestAbstractFileReaderSustained : AbstractReaderTest() {
         val now = Instant.now()
         doReturn(
             listOf(
-                RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.toTimestamp() },
-                RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.minusSeconds(1).toTimestamp() }
+                RawMessage.newBuilder().apply { metadataBuilder.idBuilder.timestamp = now.toTimestamp() },
+                RawMessage.newBuilder().apply { metadataBuilder.idBuilder.timestamp = now.minusSeconds(1).toTimestamp() }
             )
         ).whenever(parser).parse(any(), any())
 

@@ -34,10 +34,10 @@ object OldTimestampMessageFilter : ReadMessageFilter {
         message: RawMessageOrBuilder,
         streamData: StreamData?
     ): Boolean {
-        if (streamData == null || !message.metadata.hasTimestamp()) {
+        if (streamData == null || !message.metadata.id.hasTimestamp()) {
             return false
         }
-        val messageTimestamp = message.metadata.timestamp.toInstant()
+        val messageTimestamp = message.metadata.id.timestamp.toInstant()
         return streamData.lastTimestamp > messageTimestamp
             || (streamData.lastTimestamp == messageTimestamp && streamData.lastContent == message.body)
     }

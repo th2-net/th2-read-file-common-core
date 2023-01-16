@@ -18,6 +18,7 @@
 package com.exactpro.th2.read.file.common
 
 import com.exactpro.th2.common.grpc.Direction
+import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.impl.DefaultFileReader
 import com.exactpro.th2.read.file.common.impl.LineParser
@@ -86,6 +87,7 @@ class TestManualReader : AbstractFileTest() {
             checker,
             LineParser(),
             movedFileTracker,
+            messageIdSupplier = { MessageID.getDefaultInstance() },
         ) { _, path -> RecoverableBufferedReaderWrapper(LineNumberReader(Files.newBufferedReader(path))) }
             .readFileImmediately()
             .acceptNewerFiles()

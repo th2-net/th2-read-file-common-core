@@ -83,8 +83,8 @@ internal class TestReaderDropsOldTimestamp : AbstractReaderTest() {
         expectThat(argumentCaptor.lastValue)
             .hasSize(2)
             .apply {
-                get(0).get { metadataBuilder }.get { timestamp }.isEqualTo(first.toTimestamp())
-                get(1).get { metadataBuilder }.get { timestamp }.isEqualTo(last.toTimestamp())
+                get(0).get { metadataBuilder }.get { id }.get { timestamp }.isEqualTo(first.toTimestamp())
+                get(1).get { metadataBuilder }.get { id }.get { timestamp }.isEqualTo(last.toTimestamp())
             }
     }
 
@@ -110,7 +110,7 @@ internal class TestReaderDropsOldTimestamp : AbstractReaderTest() {
         val argumentCaptor = argumentCaptor<List<RawMessage.Builder>>()
         verify(onStreamData).invoke(any(), argumentCaptor.capture())
         expectThat(argumentCaptor.lastValue)
-            .single().get { metadataBuilder }.get { timestamp }.isEqualTo(creationTime.toTimestamp())
+            .single().get { metadataBuilder }.get { id }.get { timestamp }.isEqualTo(creationTime.toTimestamp())
     }
 
     override fun createParser(): ContentParser<BufferedReader> {
@@ -118,7 +118,7 @@ internal class TestReaderDropsOldTimestamp : AbstractReaderTest() {
             override fun parse(streamId: StreamId, source: BufferedReader): Collection<RawMessage.Builder> {
                 return super.parse(streamId, source).onEach {
                     val data = it.body.toStringUtf8()
-                    it.metadataBuilder.timestamp = Instant.parse(data).toTimestamp()
+                    it.metadataBuilder.idBuilder.timestamp = Instant.parse(data).toTimestamp()
                 }
             }
         }

@@ -24,7 +24,6 @@ import com.exactpro.th2.common.grpc.RawMessageOrBuilder
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.extensions.toInstant
 import com.exactpro.th2.read.file.common.extensions.toTimestamp
-import com.exactpro.th2.read.file.common.impl.DelegateReaderListener
 import com.exactpro.th2.read.file.common.metric.FilesMetric
 import com.exactpro.th2.read.file.common.metric.ReaderMetric
 import com.exactpro.th2.read.file.common.recovery.RecoverableException
@@ -52,25 +51,8 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     private val contentParser: ContentParser<T>,
     private val readerState: ReaderState,
     private val readerListener: ReaderListener,
-    private val sequenceGenerator: (StreamId) -> Long = DEFAULT_SEQUENCE_GENERATOR,
-    private val messageFilters: Collection<ReadMessageFilter> = emptyList(),
+    private val helper: FileReaderHelper,
 ) : AutoCloseable {
-    constructor(
-        configuration: CommonFileReaderConfiguration,
-        directoryChecker: DirectoryChecker,
-        contentParser: ContentParser<T>,
-        readerState: ReaderState,
-        onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit,
-        onError: (StreamId?, String, Exception) -> Unit = { _, _, _ -> },
-        sequenceGenerator: (StreamId) -> Long = DEFAULT_SEQUENCE_GENERATOR
-    ) : this(
-        configuration,
-        directoryChecker,
-        contentParser,
-        readerState,
-        DelegateReaderListener(onStreamData, onError),
-        sequenceGenerator
-    )
 
     @Volatile
     private var closed: Boolean = false
@@ -289,7 +271,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         streamData: StreamData?
     ): Boolean {
         val fileInfo = FilterFileInfo(fileHolder.path, fileHolder.lastModificationTime.toInstant(), configuration.staleTimeout)
-        val filter = messageFilters.find { it.drop(streamId, fileInfo, streamData) }
+        val filter = helper.messageFilters.find { it.drop(streamId, fileInfo, streamData) }
         if (filter != null) {
             LOGGER.info { "Source $fileInfo is dropped by filter ${filter::class.simpleName}. Stream data: $streamData" }
             closeSourceIfAllowed(streamId, fileHolder, FilesMetric.ProcessStatus.DROPPED)
@@ -314,7 +296,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         streamId: StreamId,
         streamData: StreamData?,
     ): Collection<RawMessage.Builder> = filter { msg ->
-        val filter = messageFilters.find { it.drop(streamId, msg, streamData) }
+        val filter = helper.messageFilters.find { it.drop(streamId, msg, streamData) }
         if (filter != null) {
             LOGGER.debug { "Content '${msg.toShortString()}' in $streamId stream was filtered by ${filter::class.java.simpleName} filter. Stream data: $streamData" }
         }
@@ -422,15 +404,16 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         readContent: Collection<RawMessage.Builder>,
         streamData: StreamData?
     ) {
-        var sequence: Long = streamData?.run { lastSequence + 1 } ?: sequenceGenerator(streamId)
+        var sequence: Long = streamData?.run { lastSequence + 1 } ?: helper.generateSequence(streamId)
         readContent.forEach {
             it.metadataBuilder.apply {
-
-                if (!hasTimestamp()) {
-                    timestamp = Instant.now().toTimestamp()
-                }
-
                 idBuilder.apply {
+                    // set default parameters
+                    mergeFrom(helper.createMessageId(streamId))
+
+                    if (!hasTimestamp()) {
+                        timestamp = Instant.now().toTimestamp()
+                    }
                     connectionIdBuilder.sessionAlias = streamId.sessionAlias
                     direction = streamId.direction
                     setSequence(sequence++)
@@ -609,7 +592,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         lastTime: Instant,
         lastSequence: Long
     ): Pair<Instant, Long> {
-        val currentTimestamp = metadata.timestamp.toInstant()
+        val currentTimestamp = metadata.id.timestamp.toInstant()
         if (currentTimestamp < lastTime) {
             fixOrAlert(streamId, metadataBuilder, lastTime)
         }
@@ -622,11 +605,11 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     private fun fixOrAlert(streamId: StreamId, metadata: RawMessageMetadata.Builder, lastTime: Instant) {
         if (configuration.fixTimestamp) {
-            LOGGER.debug { "Fixing timestamp for $streamId. Current: ${metadata.timestamp.toInstant()}; after fix: $lastTime" }
-            metadata.timestamp = lastTime.toTimestamp()
+            LOGGER.debug { "Fixing timestamp for $streamId. Current: ${metadata.id.timestamp.toInstant()}; after fix: $lastTime" }
+            metadata.idBuilder.timestamp = lastTime.toTimestamp()
         } else {
             throw IllegalStateException("The time does not increase monotonically. " +
-                "Last timestamp: $lastTime; current timestamp: ${metadata.timestamp.toInstant()}")
+                "Last timestamp: $lastTime; current timestamp: ${metadata.id.timestamp.toInstant()}")
         }
     }
 
@@ -948,4 +931,4 @@ private fun RawMessageOrBuilder.toShortString(): String {
 }
 
 private val RawMessageMetadataOrBuilder.timestampOrNull: Timestamp?
-    get() = if (hasTimestamp()) timestamp else null
+    get() = id.run { if (hasTimestamp()) timestamp else null }

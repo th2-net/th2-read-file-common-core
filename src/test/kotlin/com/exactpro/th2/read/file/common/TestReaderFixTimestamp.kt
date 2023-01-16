@@ -52,11 +52,11 @@ class TestReaderFixTimestamp : AbstractReaderTest() {
         val now = Instant.now()
         val values = listOf(
             RawMessage.newBuilder().apply {
-                metadataBuilder.timestamp = now.toTimestamp()
+                metadataBuilder.idBuilder.timestamp = now.toTimestamp()
                 metadataBuilder.idBuilder.sequence = 1
             },
             RawMessage.newBuilder().apply {
-                metadataBuilder.timestamp = now.minusSeconds(1).toTimestamp()
+                metadataBuilder.idBuilder.timestamp = now.minusSeconds(1).toTimestamp()
                 metadataBuilder.idBuilder.sequence = 2
             }
         )
@@ -79,7 +79,7 @@ class TestReaderFixTimestamp : AbstractReaderTest() {
 
         expectThat(argumentCaptor.lastValue)
             .all {
-                get { metadataBuilder }.get { timestamp }.isEqualTo(expectedTimestamp)
+                get { metadataBuilder }.get { id }.get { timestamp }.isEqualTo(expectedTimestamp)
             }
     }
 }

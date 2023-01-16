@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 buildscript {
     ext {
         koltin_version = '1.6.21'
@@ -37,18 +39,16 @@ javadocJar {
     from(dokkaJavadoc.outputDirectory)
 }
 
-compileKotlin {
-    kotlinOptions.jvmTarget = java_version.toString()
-}
-
-compileTestKotlin {
-    kotlinOptions.jvmTarget = java_version.toString()
+tasks.withType(KotlinCompile).configureEach {
+    kotlinOptions {
+        jvmTarget = java_version.toString()
+    }
 }
 
 dependencies {
     api platform('com.exactpro.th2:bom:4.0.2')
 
-    api 'com.exactpro.th2:grpc-common:3.11.1'
+    api 'com.exactpro.th2:grpc-common:4.1.0-th2-2150-books-pages-3871780258-SNAPSHOT'
 
     implementation 'com.google.guava:guava'
     implementation 'io.github.microutils:kotlin-logging:2.1.23'
@@ -109,7 +109,7 @@ tasks.withType(Sign).configureEach {
     }
 }
 // disable running task 'initializeSonatypeStagingRepository' on a gitlab
-tasks.whenTaskAdded {task ->
+tasks.configureEach {task ->
     if(task.name == 'initializeSonatypeStagingRepository' &&
             !(project.hasProperty('sonatypeUsername') && project.hasProperty('sonatypePassword'))
     ) {

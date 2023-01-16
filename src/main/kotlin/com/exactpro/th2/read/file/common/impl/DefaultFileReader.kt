@@ -17,10 +17,12 @@
 
 package com.exactpro.th2.read.file.common.impl
 
+import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.AbstractFileReader
 import com.exactpro.th2.read.file.common.ContentParser
 import com.exactpro.th2.read.file.common.DirectoryChecker
+import com.exactpro.th2.read.file.common.FileReaderHelper
 import com.exactpro.th2.read.file.common.FileSourceWrapper
 import com.exactpro.th2.read.file.common.MovedFileTracker
 import com.exactpro.th2.read.file.common.ReadMessageFilter
@@ -43,17 +45,15 @@ class DefaultFileReader<T : AutoCloseable> private constructor(
     readerState: ReaderState,
     readerListener: ReaderListener,
     private val delegateHolder: DelegateHolder<T>,
-    sequenceGenerator: (StreamId) -> Long,
     private val sourceFactory: (StreamId, Path) -> FileSourceWrapper<T>,
-    messageFilters: Collection<ReadMessageFilter>,
+    helper: FileReaderHelper,
 ) : AbstractFileReader<T>(
     configuration,
     directoryChecker,
     contentParser,
     readerState,
     readerListener,
-    sequenceGenerator,
-    messageFilters,
+    helper,
 ) {
     override fun canReadRightNow(holder: FileHolder<T>, staleTimeout: Duration): Boolean = delegateHolder.canRead(holder, staleTimeout)
 
@@ -92,6 +92,7 @@ class DefaultFileReader<T : AutoCloseable> private constructor(
         private val contentParser: ContentParser<T>,
         private val fileTracker: MovedFileTracker,
         private val readerState: ReaderState = InMemoryReaderState(),
+        private val messageIdSupplier: (StreamId) -> MessageID,
         private val sourceFactory: (StreamId, Path) -> FileSourceWrapper<T>
     ) {
         private var delegateHolder = DelegateHolder<T>()
@@ -169,9 +170,12 @@ class DefaultFileReader<T : AutoCloseable> private constructor(
                 readerState,
                 DelegateReaderListener(onStreamData, onError),
                 delegateHolder,
-                sequenceGenerator,
                 sourceFactory,
-                messageFilters,
+                ReaderHelper(
+                    messageIdSupplier,
+                    messageFilters,
+                    sequenceGenerator,
+                ),
             ).apply {
                 init(fileTracker)
             }

@@ -95,7 +95,7 @@ internal class TestOldTimestampMessageFilter {
         private fun createBuilder(timestamp: Instant?, content: ByteString = ByteString.EMPTY) = RawMessage.newBuilder()
             .apply {
                 if (timestamp == null) return@apply
-                metadataBuilder.timestamp = timestamp.toTimestamp()
+                metadataBuilder.idBuilder.timestamp = timestamp.toTimestamp()
                 body = content
             }
     }
