@@ -181,7 +181,7 @@ The file will be dropped if its last modification time is less than **lastTimest
 + Caching of directory updates during each processing iteration
 + Dependencies with vulnerabilities was updated:
     + Kotlin updated from `1.4.32` to `1.6.21`
-    + BOM updated from `3.0.0` to `4.0.1`
+    + BOM updated from `3.0.0` to `4.0.2`
     + grpc-common updated from `3.1.2` to `3.11.1`
     + log4j 1.2 removed from dependencies
 
