@@ -1,4 +1,4 @@
-# Read file common core for common (1.5.0)
+# Read file common core for common (2.0.0)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 
@@ -169,6 +169,13 @@ The message will be dropped if the current state for StreamId contains **lastTim
 The file will be dropped if its last modification time is less than **lastTimestamp** for current StreamID + **staleTimeout**.
 
 ## Changes
+
+### 2.0.0
+
+**Incompatible changes. Code migration is required**
+
++ Migrated to common for book & pages
+  + Added supplier for initial MessageID with prefilled data
 
 ### 1.5.0
 
