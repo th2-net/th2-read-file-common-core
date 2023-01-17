@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2020-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
  */
 
 package com.exactpro.th2.read.file.common.impl
@@ -22,6 +23,7 @@ import com.exactpro.th2.read.file.common.ContentParser
 import com.exactpro.th2.read.file.common.DirectoryChecker
 import com.exactpro.th2.read.file.common.FileSourceWrapper
 import com.exactpro.th2.read.file.common.MovedFileTracker
+import com.exactpro.th2.read.file.common.ReadMessageFilter
 import com.exactpro.th2.read.file.common.ReaderListener
 import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
@@ -43,6 +45,7 @@ class DefaultFileReader<T : AutoCloseable> private constructor(
     private val delegateHolder: DelegateHolder<T>,
     sequenceGenerator: (StreamId) -> Long,
     private val sourceFactory: (StreamId, Path) -> FileSourceWrapper<T>,
+    messageFilters: Collection<ReadMessageFilter>,
 ) : AbstractFileReader<T>(
     configuration,
     directoryChecker,
@@ -50,6 +53,7 @@ class DefaultFileReader<T : AutoCloseable> private constructor(
     readerState,
     readerListener,
     sequenceGenerator,
+    messageFilters,
 ) {
     override fun canReadRightNow(holder: FileHolder<T>, staleTimeout: Duration): Boolean = delegateHolder.canRead(holder, staleTimeout)
 
@@ -94,6 +98,7 @@ class DefaultFileReader<T : AutoCloseable> private constructor(
         private var onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit = { _, _ -> }
         private var onError: (StreamId?, String, Exception) -> Unit = { _, _, _ -> }
         private var sequenceGenerator: (StreamId) -> Long = DEFAULT_SEQUENCE_GENERATOR
+        private val messageFilters: MutableSet<ReadMessageFilter> = hashSetOf()
 
         fun readFileImmediately(): Builder<T> = apply {
             canReadFile { _, _ -> true }
@@ -147,6 +152,15 @@ class DefaultFileReader<T : AutoCloseable> private constructor(
             sequenceGenerator = generator
         }
 
+        fun addMessageFilter(filter: ReadMessageFilter): Builder<T> = apply {
+            messageFilters += filter
+        }
+
+        fun setMessageFilters(filters: Collection<ReadMessageFilter>): Builder<T> = apply {
+            messageFilters.clear()
+            messageFilters.addAll(filters)
+        }
+
         fun build(): AbstractFileReader<T> {
             return DefaultFileReader(
                 configuration,
@@ -157,6 +171,7 @@ class DefaultFileReader<T : AutoCloseable> private constructor(
                 delegateHolder,
                 sequenceGenerator,
                 sourceFactory,
+                messageFilters,
             ).apply {
                 init(fileTracker)
             }

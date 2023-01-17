@@ -1,4 +1,4 @@
-# Read file common core for common V3 (1.4.0)
+# Read file common core for common (1.5.0)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 
@@ -105,6 +105,21 @@ class CommonFileReaderConfiguration(
      * If this setting is set to `false` the error will be reported for the StreamId and not more data will be read.
      */
     val allowFileTruncate: Boolean = false,
+
+    /**
+     * If enabled the reader will continue processing files for **StreamID** if an error was occurred when processing files for that stream.
+     * The file that caused an error will be skipped and marked as processed.
+     *
+     * If disabled the reader will stop processing files for **StreamID** if any error was occurred
+     */
+    val continueOnFailure: Boolean = false,
+
+    /**
+     * The min amount of time that must pass before the read will pull updates from the files system if it constantly read data.
+     * This parameter is ignored if:
+     * + reading from one of the streams has been finished
+     */
+    val minDelayBetweenUpdates: Duration = Duration.ZERO
 )
 ```
 
@@ -122,9 +137,53 @@ Each file will produce group of messages that can include `th2.read.order_marker
 until some messages will be actually sent.
  * If file produced only one message, it will be marked as `single` 
 
- **NOTE**: If option `leaveLastFileOpen` is turned on means no flags will be generated because in this case we cannot determinate the last message read from the file
+ **NOTE**: If option `leaveLastFileOpen` is turned on means no flags will be generated because in this case the last message read from the file cannot be determinate
+
+#### Metrics
+
+The common-read-core exports the following metrics:
+
++ Files:
+  + **th2_read_files_in_dir_current** - the current number of files in directory that can be processed or was processed by the reader
+  + **th2_read_processed_files_count** - the number of files that was handled by the reader with their state:
+    + found - reader found the files and start processing it
+    + processed - reader have processed the file and closed it
+    + error - an error was occurred during file processing
+    + dropped - the stream ID corresponding to the file was added to ignore list (because of previous error) and file was not processed
++ Processing time:
+  + **th2_read_processing_time** - the time that was spent by the reader to perform a certain action:
+    + pull - gathering files to process
+    + read - reading a message from the file
+
+#### Build-in filters
+
+The common core part for read contains build-in filters to filter up the content.
+It filters messages and files based on the current state and file information
+
+##### OldTimestampMessageFilter
+
+This filters drops messages and files that contains old data.
+
+The message will be dropped if the current state for StreamId contains **lastTimestamp** greater or equals to the timestamp from message.
+
+The file will be dropped if its last modification time is less than **lastTimestamp** for current StreamID + **staleTimeout**.
 
 ## Changes
+
+### 1.5.0
+
++ Added `continueOnFailure` option to continue processing files for **StreamId** if an error is occurred during file processing for that **StreamId**
++ Added `minDelayBetweenUpdates` option to specify the min delay between pulling updates from the file system.
+  Can improve the performance. However, it will take longer to handle a new file.
+  It will be found only if one of the current sources is finished or the time since the last updates check exceeds the `minDelayBetweenUpdates`.
++ Allow zero stale timeout
++ Added metrics for reader performance
++ Caching of directory updates during each processing iteration
++ Dependencies with vulnerabilities was updated:
+    + Kotlin updated from `1.4.32` to `1.6.21`
+    + BOM updated from `3.0.0` to `4.0.2`
+    + grpc-common updated from `3.1.2` to `3.11.1`
+    + log4j 1.2 removed from dependencies
 
 ### 1.4.0
 

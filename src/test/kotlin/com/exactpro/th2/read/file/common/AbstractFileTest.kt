@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2020-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
  */
 
 package com.exactpro.th2.read.file.common
@@ -45,6 +46,18 @@ open class AbstractFileTest {
         Files.newOutputStream(file, StandardOpenOption.APPEND).use {
             it.write(bytes)
         }
+    }
+
+    protected fun Path.append(vararg lines: String, lfInEnd: Boolean = false) {
+        appendTo(this, *lines, lfInEnd = lfInEnd)
+    }
+
+    protected fun Path.append(bytes: ByteArray) {
+        appendTo(this, bytes)
+    }
+
+    protected fun Path.write(vararg lines: String, lfInEnd: Boolean = false) {
+        writeTo(this, *lines, lfInEnd = lfInEnd)
     }
 
     private fun write(file: Path, lines: Array<out String>, lfInEnd: Boolean, vararg options: StandardOpenOption) {
