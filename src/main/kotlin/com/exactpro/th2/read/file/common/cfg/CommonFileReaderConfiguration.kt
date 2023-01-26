@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2020-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
  */
 
 package com.exactpro.th2.read.file.common.cfg
@@ -76,9 +77,26 @@ class CommonFileReaderConfiguration @JvmOverloads constructor(
      * If this setting is set to `false` the error will be reported for the StreamId and not more data will be read.
      */
     val allowFileTruncate: Boolean = false,
+
+    /**
+     * If enabled the reader will continue processing files for **StreamID** if an error was occurred when processing files for that stream.
+     * The file that caused an error will be skipped and marked as processed.
+     *
+     * If disabled the reader will stop processing files for **StreamID** if any error was occurred.
+     *
+     * NOTE: this parameter might cause gaps in red data
+     */
+    val continueOnFailure: Boolean = false,
+
+    /**
+     * The min amount of time that must pass before the read will pull updates from the files system if it constantly read data.
+     * This parameter is ignored if:
+     * + reading from one of the streams has been finished
+     */
+    val minDelayBetweenUpdates: Duration = Duration.ZERO
 ) {
     init {
-        check(staleTimeout.toMillis() > 0) { "'${::staleTimeout.name}' must be positive" }
+        check(staleTimeout.toMillis() >= 0) { "'${::staleTimeout.name}' must be positive or 0 (zero)" }
         check(maxPublicationDelay.toMillis() >= 0) { "'${::maxPublicationDelay.name}' must be positive or zero" }
         check(maxBatchSize >= 0) { "'${::maxBatchSize.name}' must be positive or zero" }
         check(maxBatchesPerSecond == UNLIMITED_PUBLICATION || maxBatchesPerSecond > 0) {

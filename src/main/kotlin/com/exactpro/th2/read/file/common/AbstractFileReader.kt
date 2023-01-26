@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2020-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,21 +12,27 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
  */
 
 package com.exactpro.th2.read.file.common
 
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageMetadata
+import com.exactpro.th2.common.grpc.RawMessageMetadataOrBuilder
+import com.exactpro.th2.common.grpc.RawMessageOrBuilder
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.extensions.toInstant
 import com.exactpro.th2.read.file.common.extensions.toTimestamp
 import com.exactpro.th2.read.file.common.impl.DelegateReaderListener
+import com.exactpro.th2.read.file.common.metric.FilesMetric
+import com.exactpro.th2.read.file.common.metric.ReaderMetric
 import com.exactpro.th2.read.file.common.recovery.RecoverableException
 import com.exactpro.th2.read.file.common.recovery.RecoverableFileSourceWrapper
 import com.exactpro.th2.read.file.common.state.ReaderState
 import com.exactpro.th2.read.file.common.state.StreamData
 import com.google.protobuf.TextFormat.shortDebugString
+import com.google.protobuf.Timestamp
 import mu.KotlinLogging
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
@@ -46,7 +52,8 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     private val contentParser: ContentParser<T>,
     private val readerState: ReaderState,
     private val readerListener: ReaderListener,
-    private val sequenceGenerator: (StreamId) -> Long = DEFAULT_SEQUENCE_GENERATOR
+    private val sequenceGenerator: (StreamId) -> Long = DEFAULT_SEQUENCE_GENERATOR,
+    private val messageFilters: Collection<ReadMessageFilter> = emptyList(),
 ) : AutoCloseable {
     constructor(
         configuration: CommonFileReaderConfiguration,
@@ -71,6 +78,10 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     private val currentFilesByStreamId: MutableMap<StreamId, FileHolder<T>> = ConcurrentHashMap()
     private val contentByStreamId: MutableMap<StreamId, PublicationHolder> = ConcurrentHashMap()
     private val pendingStreams: MutableSet<StreamId> = ConcurrentHashMap.newKeySet()
+    @Volatile
+    private var cachedUpdates: Map<StreamId, Path> = emptyMap()
+    @Volatile
+    private var lastPullUpdates: Instant = Instant.MIN
 
     private lateinit var fileTracker: MovedFileTracker
     private val trackerListener = object : MovedFileTracker.FileTrackerListener {
@@ -92,6 +103,9 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             readerState.processedFilesRemoved(paths)
             val holderWithRemovedFiles = currentFilesByStreamId.values
                 .filter { paths.contains(it.path) }
+            if (holderWithRemovedFiles.isEmpty()) {
+                return
+            }
             LOGGER.info { "Files removed: ${holderWithRemovedFiles.joinToString(", ") { it.path.toString() }}" }
             holderWithRemovedFiles.forEach { it.removed() }
         }
@@ -166,66 +180,18 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
         LOGGER.debug { "Checking updates" }
         try {
+            var holdersByStreamId: Map<StreamId, FileHolder<T>> = emptyMap()
+            var updateRequired = true
             do {
-                val holdersByStreamId: Map<StreamId, FileHolder<T>> = holdersToProcess()
-                LOGGER.trace { "Get ${holdersByStreamId.size} holder(s) to process" }
+                if (updateRequired) {
+                    holdersByStreamId = ReaderMetric.measurePulling { holdersToProcess() }
+                    lastPullUpdates = Instant.now()
+                    updateRequired = false
+                }
+                LOGGER.debug { "Get ${holdersByStreamId.size} holder(s) to process" }
                 for ((streamId, fileHolder) in holdersByStreamId) {
-                    LOGGER.trace { "Processing holder for $streamId. $fileHolder" }
-
-                    if (isPublicationLimitExceeded(streamId)) {
-                        LOGGER.trace { "The publication limit in ${configuration.maxBatchesPerSecond} batch/s for $streamId exceeded. Suspend reading" }
-                        continue
-                    }
-
-                    val readContent: Collection<RawMessage.Builder> = try {
-                        readMessages(streamId, fileHolder)
-                    } catch (ex: Exception) {
-                        LOGGER.error(ex) { "Error during reading messages for $streamId. File holder: $fileHolder" }
-                        readerListener.onError(streamId, "Cannot read data from the file ${fileHolder.path}", ex)
-                        failStreamId(streamId, fileHolder, ex)
-                        continue
-                    }
-
-                    val sourceWrapper: FileSourceWrapper<T> = fileHolder.sourceWrapper
-                    if (readContent.isEmpty()) {
-                        if (!sourceWrapper.hasMoreData) {
-                            closeSourceIfAllowed(streamId, fileHolder)
-                        }
-                        continue
-                    }
-
-                    val finalContent = onContentRead(streamId, fileHolder.path, readContent)
-
-                    if (finalContent.isEmpty()) {
-                        LOGGER.trace { "No data to process after 'onContentRead' call, current state: ${fileHolder.readState}" }
-                        continue
-                    }
-
-                    finalContent.also { content ->
-                        if (!configuration.leaveLastFileOpen) {
-                            val lastState = fileHolder.readState
-                            fileHolder.updateState()
-
-                            if (content.size == 1 && lastState == FileHolder.ReadState.START && fileHolder.readState == FileHolder.ReadState.FIN) {
-                                content.first().markSingle()
-                            } else {
-                                if (lastState == FileHolder.ReadState.START) content.first().markFirst()
-                                if (fileHolder.readState == FileHolder.ReadState.FIN) content.last().markLast()
-                            }
-                        }
-
-                        val streamData = readerState[streamId]
-                        setCommonInformation(streamId, content, streamData)
-                        try {
-                            validateContent(streamId, content, streamData)
-                        } catch (ex: Exception) {
-                            LOGGER.error(ex) { "Failed to validate content for stream $streamId ($fileHolder):" +
-                                " ${content.joinToString { shortDebugString(it) }}" }
-                            failStreamId(streamId, fileHolder, ex)
-                            return@also
-                        }
-                        tryPublishContent(streamId, content)
-                    }
+                    val holderProcessed = ReaderMetric.measureReading { processHolderForStream(streamId, fileHolder) }
+                    updateRequired = updateRequired or holderProcessed
                 }
 
                 for ((streamId, holder) in contentByStreamId) {
@@ -234,6 +200,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                     }
                     holder.tryToPublish(streamId)
                 }
+                updateRequired = updateRequired or (Duration.between(lastPullUpdates, Instant.now()) >= configuration.minDelayBetweenUpdates)
             } while (holdersByStreamId.isNotEmpty() && !Thread.currentThread().isInterrupted)
             LOGGER.debug { "Checking finished" }
         } catch (ex: TruncatedSourceException) {
@@ -247,6 +214,111 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 Thread.currentThread().interrupt()
             }
         }
+    }
+
+    /**
+     * Returns `true` if current file was fully processed (normally or with error)
+     */
+    private fun processHolderForStream(
+        streamId: StreamId,
+        fileHolder: FileHolder<T>
+    ): Boolean {
+        val streamData = readerState[streamId]
+        LOGGER.trace { "Processing holder for $streamId ($streamData). $fileHolder" }
+        if (checkFileDrop(fileHolder, streamId, streamData)) {
+            return true
+        }
+
+        if (isPublicationLimitExceeded(streamId)) {
+            LOGGER.trace { "The publication limit in ${configuration.maxBatchesPerSecond} batch/s for $streamId exceeded. Suspend reading" }
+            return false
+        }
+
+        val readContent: Collection<RawMessage.Builder> = try {
+            readMessages(streamId, fileHolder)
+        } catch (ex: Exception) {
+            LOGGER.error(ex) { "Error during reading messages for $streamId. File holder: $fileHolder" }
+            readerListener.onError(streamId, "Cannot read data from the file ${fileHolder.path}", ex)
+            failStreamId(streamId, fileHolder, ex)
+            return true
+        }
+
+        val sourceWrapper: FileSourceWrapper<T> = fileHolder.sourceWrapper
+        if (readContent.isEmpty()) {
+            if (!sourceWrapper.hasMoreData) {
+                closeSourceIfAllowed(streamId, fileHolder)
+            }
+            return true
+        }
+
+        val finalContent = onContentRead(streamId, fileHolder.path, readContent)
+
+        if (finalContent.isEmpty()) {
+            LOGGER.trace { "No data to process after 'onContentRead' call, current state: ${fileHolder.readState}" }
+            return false
+        }
+
+        finalContent.also { originalContent ->
+            val filteredContent: Collection<RawMessage.Builder> = originalContent.filterReadContent(streamId, streamData)
+            if (filteredContent.isEmpty()) {
+                LOGGER.trace { "No content messages left for $streamId after filtering" }
+                return@also
+            }
+            if (!configuration.leaveLastFileOpen) {
+                filteredContent.markMessagesWithTag(fileHolder)
+            }
+            setCommonInformation(streamId, filteredContent, streamData)
+            try {
+                validateContent(streamId, filteredContent, streamData)
+            } catch (ex: Exception) {
+                LOGGER.error(ex) {
+                    "Failed to validate content for stream $streamId ($fileHolder):" +
+                        " ${filteredContent.joinToString { shortDebugString(it) }}"
+                }
+                failStreamId(streamId, fileHolder, ex)
+                return true
+            }
+            tryPublishContent(streamId, filteredContent)
+        }
+        return false
+    }
+
+    private fun checkFileDrop(
+        fileHolder: FileHolder<T>,
+        streamId: StreamId,
+        streamData: StreamData?
+    ): Boolean {
+        val fileInfo = FilterFileInfo(fileHolder.path, fileHolder.lastModificationTime.toInstant(), configuration.staleTimeout)
+        val filter = messageFilters.find { it.drop(streamId, fileInfo, streamData) }
+        if (filter != null) {
+            LOGGER.info { "Source $fileInfo is dropped by filter ${filter::class.simpleName}. Stream data: $streamData" }
+            closeSourceIfAllowed(streamId, fileHolder, FilesMetric.ProcessStatus.DROPPED)
+            return true
+        }
+        return false
+    }
+
+    private fun Collection<RawMessage.Builder>.markMessagesWithTag(fileHolder: FileHolder<T>) {
+        val lastState = fileHolder.readState
+        fileHolder.updateState()
+
+        if (size == 1 && lastState == FileHolder.ReadState.START && fileHolder.readState == FileHolder.ReadState.FIN) {
+            first().markSingle()
+        } else {
+            if (lastState == FileHolder.ReadState.START) first().markFirst()
+            if (fileHolder.readState == FileHolder.ReadState.FIN) last().markLast()
+        }
+    }
+
+    private fun Collection<RawMessage.Builder>.filterReadContent(
+        streamId: StreamId,
+        streamData: StreamData?,
+    ): Collection<RawMessage.Builder> = filter { msg ->
+        val filter = messageFilters.find { it.drop(streamId, msg, streamData) }
+        if (filter != null) {
+            LOGGER.debug { "Content '${msg.toShortString()}' in $streamId stream was filtered by ${filter::class.java.simpleName} filter. Stream data: $streamData" }
+        }
+        filter == null
     }
 
     private fun RawMessage.Builder.markFirst(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_FIRST)
@@ -277,7 +349,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     }
 
     protected open fun canBeClosed(streamId: StreamId, fileHolder: FileHolder<T>): Boolean {
-        val canCloseTheLastFile = canCloseTheLastFileFor(streamId)
+        val canCloseTheLastFile = canCloseTheLastFileFor(streamId, fileHolder)
         return (canCloseTheLastFile && noChangesForStaleTimeout(fileHolder))
             || !fileHolder.isActual
             || !fileHolder.stillExist
@@ -370,15 +442,16 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     protected fun noChangesForStaleTimeout(fileHolder: FileHolder<T>): Boolean = !fileHolder.changed &&
         abs(System.currentTimeMillis() - fileHolder.lastModificationTime.toMillis()) > configuration.staleTimeout.toMillis()
 
-    protected fun canCloseTheLastFileFor(streamId: StreamId): Boolean {
+    protected fun canCloseTheLastFileFor(streamId: StreamId, holder: FileHolder<T>): Boolean {
         return if (configuration.leaveLastFileOpen) {
-            hasNewFilesFor(streamId)
+            hasNewFilesFor(streamId, holder)
         } else {
             true
         }
     }
 
-    private fun hasNewFilesFor(streamId: StreamId): Boolean = pullUpdates().containsKey(streamId)
+    private fun hasNewFilesFor(streamId: StreamId, holder: FileHolder<T>): Boolean =
+        pullUpdates()[streamId]?.let { isNotTheSameFile(it, holder) } ?: false
 
     private fun tryPublishContent(
         streamId: StreamId,
@@ -421,10 +494,12 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     private fun closeSourceIfAllowed(
         streamId: StreamId,
         fileHolder: FileHolder<T>,
+        terminalStatus: FilesMetric.ProcessStatus = FilesMetric.ProcessStatus.PROCESSED,
     ) {
         val path = fileHolder.path
         LOGGER.debug { "Source for $path file does not have any additional data yet. Check if we can close it" }
         if (canBeClosed(streamId, fileHolder)) {
+            FilesMetric.incStatus(terminalStatus)
             terminateSource(streamId, fileHolder)
             onSourceClosed(streamId, fileHolder.path)
         }
@@ -437,7 +512,15 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     ) {
         LOGGER.debug { "Terminating source from file ${fileHolder.path} for stream $streamId" }
         terminateSource(streamId, fileHolder)
-        readerState.excludeStreamId(streamId)
+        if (configuration.continueOnFailure) {
+            LOGGER.warn { "Continue processing files for stream $streamId ignoring error when reading file ${fileHolder.path}: $cause" }
+            if (fileHolder.stillExist) {
+                readerState.fileProcessed(streamId, fileHolder.path)
+            }
+        } else {
+            readerState.excludeStreamId(streamId)
+        }
+        FilesMetric.incStatus(FilesMetric.ProcessStatus.ERROR)
         onSourceCorrupted(streamId, fileHolder.path, cause)
     }
 
@@ -518,7 +601,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             lastTime = currentTimestamp
             lastSequence = curSequence
         }
-        readerState[streamId] = StreamData(lastTime, lastSequence)
+        readerState[streamId] = StreamData(lastTime, lastSequence, content.last().body)
     }
 
     private fun RawMessage.Builder.checkTimeAndSequence(
@@ -548,26 +631,31 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     }
 
     private fun holdersToProcess(): Map<StreamId, FileHolder<T>> {
+        LOGGER.debug { "Collecting holders to process" }
         if (!configuration.disableFileMovementTracking) {
+            LOGGER.debug { "Pulling file system events" }
             fileTracker.pollFileSystemEvents(10, TimeUnit.MILLISECONDS)
         }
-        val newFiles: Map<StreamId, Path> = pullUpdates()
+        val newFiles: Map<StreamId, Path> = pullUpdates(useCache = false)
+        LOGGER.debug { "New files: $newFiles" }
         val streams = newFiles.keys + currentFilesByStreamId.keys
 
         val holdersByStreamId: MutableMap<StreamId, FileHolder<T>> = hashMapOf()
         for (streamId in streams) {
+            LOGGER.debug { "Checking holder for $streamId" }
             val fileHolder = currentFilesByStreamId[streamId] ?: run {
                 newFiles[streamId]?.toFileHolder(streamId)?.also {
                     currentFilesByStreamId[streamId] = it
-                    onSourceFound(streamId, it.path)
+                    sourceFound(streamId, it)
                 }
             }
 
             if (fileHolder == null) {
-                LOGGER.trace { "Not data for $streamId. Wait for the next attempt" }
+                LOGGER.trace { "No data for $streamId. Wait for the next attempt" }
                 continue
             }
 
+            LOGGER.debug { "Refreshing file info for $streamId ($fileHolder)" }
             fileHolder.refreshFileInfo()
             if (fileHolder.truncated) {
                 if (!configuration.allowFileTruncate) {
@@ -576,15 +664,17 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 LOGGER.info { "File ${fileHolder.path} was truncated. Start reading from the beginning" }
                 fileHolder.reopen()
             }
+            LOGGER.debug { "Checking if can read from source for $streamId ($fileHolder)" }
             if (!canReadRightNow(fileHolder, configuration.staleTimeout)) {
                 if (addToPending(streamId)) {
-                    LOGGER.debug { "Cannot read ${fileHolder.path} right now. Wait for the next attempt" }
+                    LOGGER.debug { "Cannot read $fileHolder right now. Wait for the next attempt" }
                 } else {
                     LOGGER.trace { "Still cannot read ${fileHolder.path} for stream $streamId. Wait for next attempt" }
                 }
                 continue
             }
 
+            LOGGER.debug { "Checking if ${fileHolder.path} source can be closed for stream $streamId" }
             if (!fileHolder.sourceWrapper.hasMoreData && !canBeClosed(streamId, fileHolder)) {
                 if (addToPending(streamId)) {
                     LOGGER.debug {
@@ -604,6 +694,11 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
         removeFromPending(holdersByStreamId.keys)
         return holdersByStreamId
+    }
+
+    private fun sourceFound(streamId: StreamId, it: FileHolder<T>) {
+        FilesMetric.incStatus(FilesMetric.ProcessStatus.FOUND)
+        onSourceFound(streamId, it.path)
     }
 
     private fun addToPending(id: StreamId): Boolean {
@@ -636,13 +731,26 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         return publicationHolder.isLimitExceeded(limit)
     }
 
-    private fun pullUpdates(): Map<StreamId, Path> = directoryChecker.check { streamId, path ->
-        val fileHolder = currentFilesByStreamId[streamId]
-        !readerState.isFileProcessed(streamId, path)
-            && !readerState.isStreamIdExcluded(streamId)
-            && isNotTheSameFile(path, fileHolder)
-            && acceptFile(streamId, fileHolder?.path, path).also {
-            LOGGER.trace { "Calling 'acceptFile' for $path (streamId: $streamId). Current file: ${fileHolder?.path}" }
+    private fun pullUpdates(useCache: Boolean = true): Map<StreamId, Path> {
+        if (useCache && cachedUpdates.isNotEmpty()) {
+            return cachedUpdates
+        }
+        return directoryChecker.check { streamId, path ->
+            val fileHolder = currentFilesByStreamId[streamId]
+            when {
+                readerState.isFileProcessed(streamId, path) -> false
+                readerState.isStreamIdExcluded(streamId) -> {
+                    LOGGER.warn { "StreamID $streamId is excluded from further processing" }
+                    FilesMetric.incStatus(FilesMetric.ProcessStatus.DROPPED)
+                    readerState.fileProcessed(streamId, path)
+                    false
+                }
+                else -> isNotTheSameFile(path, fileHolder) && acceptFile(streamId, fileHolder?.path, path).also {
+                    LOGGER.trace { "Calling 'acceptFile' for $path (streamId: $streamId). Current file: ${fileHolder?.path} with result $it" }
+                }
+            }
+        }.also {
+            cachedUpdates = it
         }
     }
 
@@ -652,7 +760,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     ): Boolean {
         return fileHolder == null
             || (!fileHolder.isActual && fileHolder.path == path)
-            || !fileTracker.isSameFiles(fileHolder.path, path)
+            || (if (configuration.disableFileMovementTracking) fileHolder.path != path else !fileTracker.isSameFiles(fileHolder.path, path))
     }
 
     protected class FileHolder<T : AutoCloseable>(
@@ -834,3 +942,10 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         const val UNLIMITED_PUBLICATION = -1
     }
 }
+
+private fun RawMessageOrBuilder.toShortString(): String {
+    return "timestamp: ${metadata.timestampOrNull?.toInstant()}; size: ${body.size()}"
+}
+
+private val RawMessageMetadataOrBuilder.timestampOrNull: Timestamp?
+    get() = if (hasTimestamp()) timestamp else null

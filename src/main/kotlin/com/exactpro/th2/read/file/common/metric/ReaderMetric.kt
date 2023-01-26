@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,11 +15,17 @@
  *
  */
 
-package com.exactpro.th2.read.file.common
+package com.exactpro.th2.read.file.common.metric
 
-import com.exactpro.th2.common.grpc.RawMessage
+import io.prometheus.client.Histogram
 
-interface ReaderListener {
-    fun onStreamData(streamId: StreamId, messages: List<RawMessage.Builder>)
-    fun onError(streamId: StreamId?, message: String, cause: Exception)
+object ReaderMetric {
+    private val READER_PROCESSING_TIME: Histogram = Histogram.build(
+        "th2_read_processing_time",
+        "time in seconds read spent on particular action"
+    ).labelNames("action").register()
+
+    fun <T> measurePulling(action: () -> T): T = READER_PROCESSING_TIME.labels("pull").time(action)
+
+    fun <T> measureReading(action: () -> T): T = READER_PROCESSING_TIME.labels("read").time(action)
 }

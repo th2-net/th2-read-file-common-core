@@ -23,49 +23,48 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
-import org.mockito.kotlin.clearInvocations
+import org.mockito.kotlin.doThrow
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyZeroInteractions
+import org.mockito.kotlin.whenever
 import strikt.api.expect
-import strikt.api.expectThat
 import strikt.assertions.all
 import strikt.assertions.allIndexed
 import strikt.assertions.hasSize
 import strikt.assertions.isEqualTo
-import strikt.assertions.isGreaterThanOrEqualTo
 import java.time.Duration
-import kotlin.system.measureTimeMillis
 
-internal class TestTruncatedFileReader : AbstractReaderTest() {
+internal class TestContinueOnFailureFileReader : AbstractReaderTest() {
 
     @Test
-    internal fun `reopen file when it is truncated`() {
-        val file = createFile(dir, "A-0")
-        appendTo(file, "Line 1", "Line 2", "Line 3", lfInEnd = true)
+    fun `continues reading data for stream id`() {
+        val errorFile = createFile(dir, "A-0")
+        appendTo(errorFile, "Line 1", "Line 2", "Line 3", lfInEnd = true)
 
-        // The reader reads the whole file in one check because
+        doThrow(IllegalStateException("fake"))
+            .doCallRealMethod()
+            .whenever(parser).parse(any(), any())
+
         assertTimeoutPreemptively(Duration.ofSeconds(1).plusMillis(300)) {
             reader.processUpdates()
         }
 
-        writeTo(file,  "Line 4", "Line 5", "Line 6")
+        verifyZeroInteractions(onStreamData)
 
+        val newFile = createFile(dir, "A-1")
+        writeTo(newFile,  "Line 4", "Line 5", "Line 6")
+
+        // The reader reads the whole file in one check because of max batch size
         assertTimeoutPreemptively(Duration.ofSeconds(1).plusMillis(300)) {
             reader.processUpdates()
         }
 
         val firstCaptor = argumentCaptor<List<RawMessage.Builder>>()
-        verify(onStreamData, times(2)).invoke(any(), firstCaptor.capture())
+        verify(onStreamData, times(1)).invoke(any(), firstCaptor.capture())
 
         expect {
-            that(firstCaptor.firstValue)
-                .hasSize(configuration.maxBatchSize)
-                .apply {
-                    allIndexed { get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line ${it + 1}") }
-
-                    all { get { metadata }.get { id }.get { connectionId }.get { sessionAlias }.isEqualTo("A") }
-                }
-            that(firstCaptor.secondValue)
+            that(firstCaptor.lastValue)
                 .hasSize(configuration.maxBatchSize)
                 .apply {
                     allIndexed { get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line ${it + 4}") }
@@ -82,7 +81,8 @@ internal class TestTruncatedFileReader : AbstractReaderTest() {
             leaveLastFileOpen = true,
             maxBatchSize = 3,
             maxBatchesPerSecond = 1,
-            allowFileTruncate = true,
+            allowFileTruncate = false,
+            continueOnFailure = true,
         )
     }
 }

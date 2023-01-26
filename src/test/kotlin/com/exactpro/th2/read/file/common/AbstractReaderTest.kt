@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2020-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
  */
 
 package com.exactpro.th2.read.file.common
@@ -22,6 +23,8 @@ import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.impl.BufferedReaderSourceWrapper
 import com.exactpro.th2.read.file.common.impl.DefaultFileReader
 import com.exactpro.th2.read.file.common.impl.LineParser
+import com.exactpro.th2.read.file.common.state.ReaderState
+import com.exactpro.th2.read.file.common.state.impl.InMemoryReaderState
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.io.TempDir
@@ -41,6 +44,7 @@ abstract class AbstractReaderTest : AbstractFileTest() {
     protected val onSourceClosed: (StreamId, Path) -> Unit = mock { }
     protected lateinit var reader: AbstractFileReader<BufferedReader>
     protected lateinit var configuration: CommonFileReaderConfiguration
+    protected lateinit var readerState: ReaderState
     private lateinit var directoryChecker: DirectoryChecker
 
     @BeforeEach
@@ -57,17 +61,20 @@ abstract class AbstractReaderTest : AbstractFileTest() {
         )
 
         val movedFileTracker = MovedFileTracker(dir)
+        readerState = spy(InMemoryReaderState())
         reader = DefaultFileReader.Builder(
             configuration,
             directoryChecker,
             parser,
             movedFileTracker,
+            readerState = readerState,
             sourceFactory = ::createSource,
         )
             .readFileImmediately()
             .onStreamData(onStreamData)
             .onSourceClosed(onSourceClosed)
             .acceptNewerFiles()
+            .setMessageFilters(messageFilters)
             .build()
     }
 
@@ -83,6 +90,8 @@ abstract class AbstractReaderTest : AbstractFileTest() {
     }
 
     abstract fun createConfiguration(defaultStaleTimeout: Duration): CommonFileReaderConfiguration
+
+    protected open val messageFilters: Collection<ReadMessageFilter> = emptyList()
 
     @AfterEach
     internal fun tearDown() {
