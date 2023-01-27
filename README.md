@@ -173,8 +173,6 @@ The file will be dropped if its last modification time is less than **lastTimest
 ### 1.5.1
 
 + BOM updated from `4.0.2` to `4.1.0`
-+ kotlin-logging updated to `3.0.2`
-
 
 ### 1.5.0
 
