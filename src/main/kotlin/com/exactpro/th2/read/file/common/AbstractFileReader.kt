@@ -78,6 +78,7 @@ abstract class AbstractFileReader<T : AutoCloseable, K : DataGroupKey>(
 
     private val currentFilesByDataGroup: MutableMap<K, FileHolder<T>> = ConcurrentHashMap()
     private val contentByDataGroup: MutableMap<K, MutableMap<StreamId, PublicationHolder>> = ConcurrentHashMap()
+    private val streamIdByGroup: MutableMap<StreamId, K> = ConcurrentHashMap()
     private val pendingGroups: MutableSet<K> = ConcurrentHashMap.newKeySet()
     @Volatile
     private var cachedUpdates: Map<K, Path> = emptyMap()
@@ -225,41 +226,47 @@ abstract class AbstractFileReader<T : AutoCloseable, K : DataGroupKey>(
      * Returns `true` if current file was fully processed (normally or with error)
      */
     private fun processHolderForGroup(
-        dataGroup: K,
+        group: K,
         fileHolder: FileHolder<T>,
     ): Boolean {
-        val groupData: GroupData? = readerState[dataGroup]
-        LOGGER.trace { "Processing holder for $dataGroup ($groupData). $fileHolder" }
-        if (checkFileDrop(fileHolder, dataGroup, groupData)) {
+        val groupData: GroupData? = readerState[group]
+        LOGGER.trace { "Processing holder for $group ($groupData). $fileHolder" }
+        if (checkFileDrop(fileHolder, group, groupData)) {
             return true
         }
 
-        if (isAnyPublicationLimitExceeded(dataGroup)) {
-            LOGGER.trace { "The publication limit in ${configuration.maxBatchesPerSecond} batch/s for $dataGroup exceeded. Suspend reading" }
+        if (isAnyPublicationLimitExceeded(group)) {
+            LOGGER.trace { "The publication limit in ${configuration.maxBatchesPerSecond} batch/s for $group exceeded. Suspend reading" }
             return false
         }
 
         val readContent: Map<StreamId, Collection<RawMessage.Builder>> = try {
-            readMessages(dataGroup, fileHolder)
+            readMessages(group, fileHolder)
         } catch (ex: Exception) {
-            LOGGER.error(ex) { "Error during reading messages for $dataGroup. File holder: $fileHolder" }
-            readerListener.onError(dataGroup, "Cannot read data from the file ${fileHolder.path}", ex)
-            failStreamId(dataGroup, null, fileHolder, ex)
+            LOGGER.error(ex) { "Error during reading messages for $group. File holder: $fileHolder" }
+            readerListener.onError(group, "Cannot read data from the file ${fileHolder.path}", ex)
+            failStreamId(group, null, fileHolder, ex)
             return true
         }
 
         val sourceWrapper: FileSourceWrapper<T> = fileHolder.sourceWrapper
         if (readContent.isEmpty()) {
             if (!sourceWrapper.hasMoreData) {
-                closeSourceIfAllowed(dataGroup, fileHolder)
+                closeSourceIfAllowed(group, fileHolder)
             }
             return true
         }
 
         var fullyProcessed = false
         for ((streamId, messages) in readContent) {
+            val expectedGroup: K? = streamIdByGroup[streamId]
+            if (expectedGroup != null && expectedGroup != group) {
+                LOGGER.error { "Stream $streamId produced by $group was also produced by another group $expectedGroup" }
+                continue
+            }
+            streamIdByGroup[streamId] = group
             val streamData: StreamData? = readerState[streamId]
-            val finalContent = onContentRead(dataGroup, streamId, fileHolder.path, messages)
+            val finalContent = onContentRead(group, streamId, fileHolder.path, messages)
 
             if (finalContent.isEmpty()) {
                 LOGGER.trace { "No data to process after 'onContentRead' call for $streamId, current state: ${fileHolder.readState}" }
@@ -268,7 +275,7 @@ abstract class AbstractFileReader<T : AutoCloseable, K : DataGroupKey>(
 
             val filteredContent: Collection<RawMessage.Builder> = finalContent.filterReadContent(streamId, streamData)
             if (filteredContent.isEmpty()) {
-                LOGGER.trace { "No content messages left for $streamId in $dataGroup group after filtering" }
+                LOGGER.trace { "No content messages left for $streamId in $group group after filtering" }
                 continue // try next stream ID
             }
             if (!configuration.leaveLastFileOpen) {
@@ -279,14 +286,14 @@ abstract class AbstractFileReader<T : AutoCloseable, K : DataGroupKey>(
                 validateContent(streamId, filteredContent, streamData)
             } catch (ex: Exception) {
                 LOGGER.error(ex) {
-                    "Failed to validate content for stream $streamId in group $dataGroup ($fileHolder):" +
+                    "Failed to validate content for stream $streamId in group $group ($fileHolder):" +
                         " ${filteredContent.joinToString { shortDebugString(it) }}"
                 }
-                failStreamId(dataGroup, streamId, fileHolder, ex)
+                failStreamId(group, streamId, fileHolder, ex)
                 fullyProcessed = true // because it caused an error, and we cannot safely continue reading
                 continue // try next stream ID
             }
-            tryPublishContent(dataGroup, streamId, filteredContent)
+            tryPublishContent(group, streamId, filteredContent)
         }
         return fullyProcessed
     }
