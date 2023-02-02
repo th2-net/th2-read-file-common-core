@@ -17,7 +17,9 @@
 
 package com.exactpro.th2.read.file.common.state.impl
 
+import com.exactpro.th2.read.file.common.DataGroupKey
 import com.exactpro.th2.read.file.common.StreamId
+import com.exactpro.th2.read.file.common.state.GroupData
 import com.exactpro.th2.read.file.common.state.ReaderState
 import com.exactpro.th2.read.file.common.state.StreamData
 import java.nio.file.Path
@@ -26,18 +28,19 @@ import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
 
-class InMemoryReaderState : ReaderState {
+class InMemoryReaderState<in T : DataGroupKey> : ReaderState<T> {
     private val lock = ReentrantReadWriteLock()
-    private val processedFiles: MutableMap<StreamId, MutableSet<Path>> = HashMap()
-    private val excludeStreamId: MutableSet<StreamId> = ConcurrentHashMap.newKeySet()
+    private val processedFiles: MutableMap<T, MutableSet<Path>> = HashMap()
+    private val excludeStreamId: MutableSet<T> = ConcurrentHashMap.newKeySet()
+    private val groupDataByKey: MutableMap<T, GroupData> = ConcurrentHashMap()
     private val streamDataByStreamId: MutableMap<StreamId, StreamData> = ConcurrentHashMap()
 
-    override fun isFileProcessed(streamId: StreamId, path: Path): Boolean {
-        return lock.read { processedFiles[streamId]?.contains(path) ?: false }
+    override fun isFileProcessed(dataGroup: T, path: Path): Boolean {
+        return lock.read { processedFiles[dataGroup]?.contains(path) ?: false }
     }
 
-    override fun fileProcessed(streamId: StreamId, path: Path) {
-        lock.write { processedFiles.computeIfAbsent(streamId) { HashSet() }.add(path) }
+    override fun fileProcessed(dataGroup: T, path: Path) {
+        lock.write { processedFiles.computeIfAbsent(dataGroup) { HashSet() }.add(path) }
     }
 
     override fun fileMoved(path: Path, current: Path): Boolean {
@@ -57,12 +60,17 @@ class InMemoryReaderState : ReaderState {
         lock.write { processedFiles.values.forEach { it.removeAll(paths) } }
     }
 
-    override fun isStreamIdExcluded(streamId: StreamId): Boolean = excludeStreamId.contains(streamId)
+    override fun isDataGroupExcluded(dataGroup: T): Boolean = excludeStreamId.contains(dataGroup)
 
-    override fun excludeStreamId(streamId: StreamId) {
-        excludeStreamId.add(streamId)
+    override fun excludeDataGroup(dataGroup: T) {
+        excludeStreamId.add(dataGroup)
     }
 
+    override fun get(dataGroup: T): GroupData? = groupDataByKey[dataGroup]
+
+    override fun set(dataGroup: T, groupData: GroupData) {
+        groupDataByKey[dataGroup] = groupData
+    }
     override fun get(streamId: StreamId): StreamData? = streamDataByStreamId[streamId]
 
     override fun set(streamId: StreamId, data: StreamData) {

@@ -20,6 +20,7 @@ package com.exactpro.th2.read.file.common.impl
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.AbstractFileReader
 import com.exactpro.th2.read.file.common.ContentParser
+import com.exactpro.th2.read.file.common.DataGroupKey
 import com.exactpro.th2.read.file.common.DirectoryChecker
 import com.exactpro.th2.read.file.common.FileSourceWrapper
 import com.exactpro.th2.read.file.common.MovedFileTracker
@@ -36,17 +37,17 @@ import java.time.Duration
 import java.time.Instant
 import kotlin.math.abs
 
-class DefaultFileReader<T : AutoCloseable> private constructor(
+class DefaultFileReader<T : AutoCloseable, K : DataGroupKey> private constructor(
     configuration: CommonFileReaderConfiguration,
-    directoryChecker: DirectoryChecker,
-    contentParser: ContentParser<T>,
-    readerState: ReaderState,
-    readerListener: ReaderListener,
-    private val delegateHolder: DelegateHolder<T>,
+    directoryChecker: DirectoryChecker<K>,
+    contentParser: ContentParser<T, K>,
+    readerState: ReaderState<K>,
+    readerListener: ReaderListener<K>,
+    private val delegateHolder: DelegateHolder<T, K>,
     sequenceGenerator: (StreamId) -> Long,
-    private val sourceFactory: (StreamId, Path) -> FileSourceWrapper<T>,
+    private val sourceFactory: (K, Path) -> FileSourceWrapper<T>,
     messageFilters: Collection<ReadMessageFilter>,
-) : AbstractFileReader<T>(
+) : AbstractFileReader<T, K>(
     configuration,
     directoryChecker,
     contentParser,
@@ -57,111 +58,111 @@ class DefaultFileReader<T : AutoCloseable> private constructor(
 ) {
     override fun canReadRightNow(holder: FileHolder<T>, staleTimeout: Duration): Boolean = delegateHolder.canRead(holder, staleTimeout)
 
-    override fun acceptFile(streamId: StreamId, currentFile: Path?, newFile: Path): Boolean = delegateHolder.acceptFile(streamId, currentFile, newFile)
+    override fun acceptFile(dataGroup: K, currentFile: Path?, newFile: Path): Boolean = delegateHolder.acceptFile(dataGroup, currentFile, newFile)
 
-    override fun createSource(streamId: StreamId, path: Path): FileSourceWrapper<T> = sourceFactory(streamId, path)
+    override fun createSource(dataGroup: K, path: Path): FileSourceWrapper<T> = sourceFactory(dataGroup, path)
 
-    override fun onSourceFound(streamId: StreamId, path: Path) {
-        delegateHolder.onSourceFound.invoke(streamId, path)
+    override fun onSourceFound(dataGroup: K, path: Path) {
+        delegateHolder.onSourceFound.invoke(dataGroup, path)
     }
 
-    override fun onContentRead(streamId: StreamId, path: Path, readContent: Collection<RawMessage.Builder>): Collection<RawMessage.Builder> {
+    override fun onContentRead(dataGroup: K, streamId: StreamId, path: Path, readContent: Collection<RawMessage.Builder>): Collection<RawMessage.Builder> {
         return delegateHolder.onContentRead.invoke(streamId, path, readContent)
     }
 
-    override fun onSourceCorrupted(streamId: StreamId, path: Path, cause: Exception) {
-        delegateHolder.onSourceCorrupted.invoke(streamId, path, cause)
+    override fun onSourceCorrupted(dataGroup: K, path: Path, cause: Exception) {
+        delegateHolder.onSourceCorrupted.invoke(dataGroup, path, cause)
     }
 
-    override fun onSourceClosed(streamId: StreamId, path: Path) {
-        delegateHolder.onSourceClosed.invoke(streamId, path)
+    override fun onSourceClosed(dataGroup: K, path: Path) {
+        delegateHolder.onSourceClosed.invoke(dataGroup, path)
     }
 
-    private data class DelegateHolder<T : AutoCloseable>(
+    private data class DelegateHolder<T : AutoCloseable, K : DataGroupKey>(
         val canRead: (FileHolder<T>, Duration) -> Boolean = READ_AFTER_STALE_TIMEOUT,
-        val acceptFile: (StreamId, Path?, Path) -> Boolean = { _, _, _ -> true },
-        val onSourceFound: (StreamId, Path) -> Unit = { _, _ -> },
+        val acceptFile: (K, Path?, Path) -> Boolean = { _, _, _ -> true },
+        val onSourceFound: (K, Path) -> Unit = { _, _ -> },
         val onContentRead: (StreamId, Path, Collection<RawMessage.Builder>) -> Collection<RawMessage.Builder> = { _, _, msgs -> msgs },
-        val onSourceCorrupted: (StreamId, Path, Exception) -> Unit = { _, _, _ -> },
-        val onSourceClosed: (StreamId, Path) -> Unit = { _, _ -> },
+        val onSourceCorrupted: (K, Path, Exception) -> Unit = { _, _, _ -> },
+        val onSourceClosed: (K, Path) -> Unit = { _, _ -> },
     )
 
-    class Builder<T : AutoCloseable>(
+    class Builder<T : AutoCloseable, K : DataGroupKey>(
         private val configuration: CommonFileReaderConfiguration,
-        private val directoryChecker: DirectoryChecker,
-        private val contentParser: ContentParser<T>,
+        private val directoryChecker: DirectoryChecker<K>,
+        private val contentParser: ContentParser<T, K>,
         private val fileTracker: MovedFileTracker,
-        private val readerState: ReaderState = InMemoryReaderState(),
-        private val sourceFactory: (StreamId, Path) -> FileSourceWrapper<T>
+        private val readerState: ReaderState<K> = InMemoryReaderState(),
+        private val sourceFactory: (K, Path) -> FileSourceWrapper<T>
     ) {
-        private var delegateHolder = DelegateHolder<T>()
+        private var delegateHolder = DelegateHolder<T, K>()
         private var onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit = { _, _ -> }
-        private var onError: (StreamId?, String, Exception) -> Unit = { _, _, _ -> }
+        private var onError: (K?, String, Exception) -> Unit = { _, _, _ -> }
         private var sequenceGenerator: (StreamId) -> Long = DEFAULT_SEQUENCE_GENERATOR
         private val messageFilters: MutableSet<ReadMessageFilter> = hashSetOf()
 
-        fun readFileImmediately(): Builder<T> = apply {
+        fun readFileImmediately(): Builder<T, K> = apply {
             canReadFile { _, _ -> true }
         }
 
-        fun readFileAfterStaleTimeout(): Builder<T> = apply {
+        fun readFileAfterStaleTimeout(): Builder<T, K> = apply {
             canReadFileInternal(READ_AFTER_STALE_TIMEOUT)
         }
 
-        fun canReadFile(condition: (Path, Duration) -> Boolean): Builder<T> = apply {
+        fun canReadFile(condition: (Path, Duration) -> Boolean): Builder<T, K> = apply {
             canReadFileInternal { holder, stale -> condition(holder.path, stale) }
         }
 
-        private fun canReadFileInternal(condition: (FileHolder<T>, Duration) -> Boolean): Builder<T> = apply {
+        private fun canReadFileInternal(condition: (FileHolder<T>, Duration) -> Boolean): Builder<T, K> = apply {
             delegateHolder = delegateHolder.copy(canRead = condition)
         }
 
-        fun acceptNewerFiles(): Builder<T> = apply {
+        fun acceptNewerFiles(): Builder<T, K> = apply {
             acceptFiles(ACCEPT_NEWER_FILES)
         }
 
-        fun acceptFiles(filter: (StreamId, Path?, Path) -> Boolean): Builder<T> = apply {
+        fun acceptFiles(filter: (K, Path?, Path) -> Boolean): Builder<T, K> = apply {
             delegateHolder = delegateHolder.copy(acceptFile = filter)
         }
 
-        fun onSourceFound(action: (StreamId, Path) -> Unit): Builder<T> = apply {
+        fun onSourceFound(action: (K, Path) -> Unit): Builder<T, K> = apply {
             delegateHolder = delegateHolder.copy(onSourceFound = action)
         }
 
-        fun onContentRead(action: (StreamId, Path, Collection<RawMessage.Builder>) -> Collection<RawMessage.Builder>): Builder<T> = apply {
+        fun onContentRead(action: (StreamId, Path, Collection<RawMessage.Builder>) -> Collection<RawMessage.Builder>): Builder<T, K> = apply {
             delegateHolder = delegateHolder.copy(onContentRead = action)
         }
 
-        fun onSourceCorrupted(action: (StreamId, Path, Exception) -> Unit): Builder<T> = apply {
+        fun onSourceCorrupted(action: (K, Path, Exception) -> Unit): Builder<T, K> = apply {
             delegateHolder = delegateHolder.copy(onSourceCorrupted = action)
         }
 
-        fun onSourceClosed(action: (StreamId, Path) -> Unit): Builder<T> = apply {
+        fun onSourceClosed(action: (K, Path) -> Unit): Builder<T, K> = apply {
             delegateHolder = delegateHolder.copy(onSourceClosed = action)
         }
 
-        fun onStreamData(action: (StreamId, List<RawMessage.Builder>) -> Unit): Builder<T> = apply {
+        fun onStreamData(action: (StreamId, List<RawMessage.Builder>) -> Unit): Builder<T, K> = apply {
             onStreamData = action
         }
 
-        fun onError(action: (StreamId?, String, Exception) -> Unit): Builder<T> = apply {
+        fun onError(action: (K?, String, Exception) -> Unit): Builder<T, K> = apply {
             onError = action
         }
 
-        fun generateSequence(generator: (StreamId) -> Long): Builder<T> = apply {
+        fun generateSequence(generator: (StreamId) -> Long): Builder<T, K> = apply {
             sequenceGenerator = generator
         }
 
-        fun addMessageFilter(filter: ReadMessageFilter): Builder<T> = apply {
+        fun addMessageFilter(filter: ReadMessageFilter): Builder<T, K> = apply {
             messageFilters += filter
         }
 
-        fun setMessageFilters(filters: Collection<ReadMessageFilter>): Builder<T> = apply {
+        fun setMessageFilters(filters: Collection<ReadMessageFilter>): Builder<T, K> = apply {
             messageFilters.clear()
             messageFilters.addAll(filters)
         }
 
-        fun build(): AbstractFileReader<T> {
+        fun build(): AbstractFileReader<T, K> {
             return DefaultFileReader(
                 configuration,
                 directoryChecker,
@@ -183,7 +184,7 @@ class DefaultFileReader<T : AutoCloseable> private constructor(
             abs(holder.lastModificationTime.toMillis() - Instant.now().toEpochMilli()) > stale.toMillis()
         }
 
-        val ACCEPT_NEWER_FILES = { _: StreamId, current: Path?, new: Path ->
+        private val ACCEPT_NEWER_FILES = { _: Any, current: Path?, new: Path ->
             current == null
                 || Files.notExists(current)
                 || current.attributes.creationTime() <= new.attributes.creationTime()

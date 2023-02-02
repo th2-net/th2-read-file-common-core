@@ -88,15 +88,15 @@ internal class TestSameFileForDifferentStreamsInFileReader : AbstractReaderTest(
         )
     }
 
-    override fun createExtractor(): (Path) -> Set<StreamId> {
+    override fun createExtractor(): (Path) -> Set<StreamIdGroup> {
         return { path ->
             val name = path.fileName.toString()
-            hashSetOf<StreamId>().apply {
+            hashSetOf<StreamIdGroup>().apply {
                 if (name.contains('A') || name.contains('C')) {
-                    add(StreamId("A", Direction.SECOND))
+                    add(StreamIdGroup(StreamId("A", Direction.SECOND)))
                 }
                 if (name.contains('B') || name.contains('C')) {
-                    add(StreamId("B", Direction.SECOND))
+                    add(StreamIdGroup(StreamId("B", Direction.SECOND)))
                 }
             }
         }

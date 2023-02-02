@@ -17,23 +17,35 @@
 
 package com.exactpro.th2.read.file.common.state
 
+import com.exactpro.th2.read.file.common.DataGroupKey
 import com.exactpro.th2.read.file.common.StreamId
 import com.google.protobuf.ByteString
 import java.nio.file.Path
 import java.time.Instant
 
-interface ReaderState {
-    fun isFileProcessed(streamId: StreamId, path: Path): Boolean
-    fun fileProcessed(streamId: StreamId, path: Path)
+interface ReaderState<in K : DataGroupKey> {
+    fun isFileProcessed(dataGroup: K, path: Path): Boolean
+    fun fileProcessed(dataGroup: K, path: Path)
     fun fileMoved(path: Path, current: Path): Boolean
     fun processedFilesRemoved(paths: Collection<Path>)
 
-    fun isStreamIdExcluded(streamId: StreamId): Boolean
-    fun excludeStreamId(streamId: StreamId)
+    fun isDataGroupExcluded(dataGroup: K): Boolean
+    fun excludeDataGroup(dataGroup: K)
+
+    operator fun get(dataGroup: K): GroupData?
+
+    operator fun set(dataGroup: K, groupData: GroupData)
 
     operator fun get(streamId: StreamId): StreamData?
     operator fun set(streamId: StreamId, data: StreamData)
 }
+
+data class GroupData(
+    /**
+     * The modification timestamp of the last processed source used by [DataGroupKey]
+     */
+    val lastSourceModificationTimestamp: Instant
+)
 
 data class StreamData(
     /**

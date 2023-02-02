@@ -46,12 +46,14 @@ import kotlin.random.Random
 @Disabled
 @ExperimentalPathApi
 class TestManualReader : AbstractFileTest() {
+    private class TestGroup(val name: String) : DataGroupKey
+
     private val filter: (Path) -> Boolean = mock { onGeneric { invoke(any()) }.thenReturn(true) }
     private val dir: Path = Path.of("build/workdir")
-    private val idExtractor: (Path) -> StreamId? = { path ->
+    private val idExtractor: (Path) -> TestGroup? = { path ->
         path.nameParts().let {
             if (it.size == 2) {
-                StreamId(it.first(), Direction.FIRST)
+                TestGroup(it.first())
             } else {
                 null
             }
@@ -65,7 +67,7 @@ class TestManualReader : AbstractFileTest() {
         filter
     )
 
-    private lateinit var reader: AbstractFileReader<LineNumberReader>
+    private lateinit var reader: AbstractFileReader<LineNumberReader, TestGroup>
     private lateinit var executor: ScheduledExecutorService
     private lateinit var future: Future<*>
 
@@ -84,7 +86,7 @@ class TestManualReader : AbstractFileTest() {
         reader = DefaultFileReader.Builder(
             configuration,
             checker,
-            LineParser(),
+            LineParser(extractStreamId = { it, _ -> StreamId(it.name, Direction.FIRST) }),
             movedFileTracker,
         ) { _, path -> RecoverableBufferedReaderWrapper(LineNumberReader(Files.newBufferedReader(path))) }
             .readFileImmediately()

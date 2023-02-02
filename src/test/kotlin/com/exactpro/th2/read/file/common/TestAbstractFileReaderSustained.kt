@@ -26,6 +26,7 @@ import org.junit.jupiter.api.assertTimeoutPreemptively
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.clearInvocations
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.never
 import org.mockito.kotlin.timeout
@@ -201,12 +202,15 @@ internal class TestAbstractFileReaderSustained : AbstractReaderTest() {
     internal fun `stops reading data for stream when it fails the validation`() {
         doReturn(true).whenever(parser).canParse(any(), any(), any())
         val now = Instant.now()
-        doReturn(
-            listOf(
-                RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.toTimestamp() },
-                RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.minusSeconds(1).toTimestamp() }
+        doAnswer {
+            val group = it.getArgument<StreamIdGroup>(0)
+            mapOf(group.streamId to
+                listOf(
+                    RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.toTimestamp() },
+                    RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.minusSeconds(1).toTimestamp() }
+                )
             )
-        ).whenever(parser).parse(any(), any())
+        }.whenever(parser).parse(any(), any())
 
         createFile(dir, "A-0").also {
             appendTo(it, "Line", lfInEnd = true)

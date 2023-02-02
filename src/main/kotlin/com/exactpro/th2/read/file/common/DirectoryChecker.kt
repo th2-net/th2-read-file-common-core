@@ -24,39 +24,39 @@ import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.util.function.Consumer
 
-class DirectoryChecker(
+class DirectoryChecker<K : DataGroupKey>(
     private val directory: Path,
 
     /**
-     * Extracts the [StreamId] from file name. If `null` the file will be skipped
+     * Extracts the [DataGroupKey] from file name. If empty the file will be skipped
      */
-    private val streamIdExtractor: (Path) -> Set<StreamId>,
+    private val groupKeyExtractor: (Path) -> Set<K>,
 
     /**
-     * Will be used to sort the files mapped to the same [StreamId]
+     * Will be used to sort the files mapped to the same [DataGroupKey]
      */
-    private val streamFileReorder: Consumer<MutableList<Path>>,
+    private val groupFileReorder: Consumer<MutableList<Path>>,
     private val filter: (Path) -> Boolean = { true }
 ) {
     constructor(
         directory: Path,
-        streamFileReorder: Consumer<MutableList<Path>>,
-        streamIdExtractor: (Path) -> StreamId?,
+        groupFileReorder: Consumer<MutableList<Path>>,
+        groupKeyExtractor: (Path) -> K?,
         filter: (Path) -> Boolean = { true }
-    ) : this(directory, { path: Path -> streamIdExtractor(path)?.let { setOf(it) } ?: emptySet() }, streamFileReorder, filter)
+    ) : this(directory, { path: Path -> groupKeyExtractor(path)?.let { setOf(it) } ?: emptySet() }, groupFileReorder, filter)
 
     constructor(
         directory: Path,
-        streamFileComparator: Comparator<Path>,
-        streamIdExtractor: (Path) -> StreamId?,
+        groupFileComparator: Comparator<Path>,
+        groupKeyExtractor: (Path) -> K?,
         filter: (Path) -> Boolean = { true }
-    ) : this(directory, Consumer { it.sortWith(streamFileComparator) }, streamIdExtractor, filter)
+    ) : this(directory, Consumer { it.sortWith(groupFileComparator) }, groupKeyExtractor, filter)
 
     /**
      * @return the list of files that are in the [directory]
      * and matches the [filter]
      */
-    fun check(nextForStream: (StreamId, Path) -> Boolean = { _, _ -> true }): Map<StreamId, Path> {
+    fun check(nextForGroup: (K, Path) -> Boolean = { _, _ -> true }): Map<K, Path> {
         if (Files.notExists(directory)) {
             LOGGER.warn { "Directory $directory does not exist. Skip checking" }
             return emptyMap()
@@ -68,24 +68,24 @@ class DirectoryChecker(
         FilesMetric.setFilesInDirectory(filesInDirectory.size)
         LOGGER.trace { "Collected ${filesInDirectory.size} file(s): $filesInDirectory" }
 
-        val filesByStreamId = hashMapOf<StreamId, MutableList<Path>>()
+        val filesByGroupKey = hashMapOf<K, MutableList<Path>>()
         for (path in filesInDirectory) {
-            val streamIds = streamIdExtractor(path)
-            if (streamIds.isEmpty()) {
+            val groups = groupKeyExtractor(path)
+            if (groups.isEmpty()) {
                 continue
             }
-            streamIds.forEach { streamId ->
-                filesByStreamId.computeIfAbsent(streamId) { arrayListOf() }.add(path)
+            groups.forEach { group ->
+                filesByGroupKey.computeIfAbsent(group) { arrayListOf() }.add(path)
             }
         }
 
-        return hashMapOf<StreamId, Path>().also { dest ->
-            filesByStreamId.forEach { (streamId, files) ->
+        return hashMapOf<K, Path>().also { dest ->
+            filesByGroupKey.forEach { (group, files) ->
                 files.apply {
-                    streamFileReorder.accept(this)
+                    groupFileReorder.accept(this)
                 }.firstOrNull {
-                    nextForStream(streamId, it)
-                }?.also { dest[streamId] = it }
+                    nextForGroup(group, it)
+                }?.also { dest[group] = it }
             }
         }
     }

@@ -18,6 +18,7 @@
 package com.exactpro.th2.read.file.common.state.impl
 
 import com.exactpro.th2.common.grpc.Direction
+import com.exactpro.th2.read.file.common.DataGroupKey
 import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.state.StreamData
 import com.google.protobuf.ByteString
@@ -37,55 +38,56 @@ import java.nio.file.Path
 import java.time.Instant
 
 internal class TestInMemoryReaderState {
-    private val state = InMemoryReaderState()
+    private data class TestGroup(val id: Int) : DataGroupKey
+    private val state = InMemoryReaderState<TestGroup>()
 
     @ParameterizedTest(name = "IsProcessed: {0}")
     @ValueSource(booleans = [true, false])
     fun isFileProcessed(addToProcessed: Boolean) {
         val path = Path.of("test")
-        val streamId = StreamId("test", Direction.SECOND)
+        val dataGroup = group(1)
         if (addToProcessed) {
-            state.fileProcessed(streamId, path)
+            state.fileProcessed(dataGroup, path)
         }
 
-        expectThat(state.isFileProcessed(streamId, path)).isEqualTo(addToProcessed)
+        expectThat(state.isFileProcessed(dataGroup, path)).isEqualTo(addToProcessed)
     }
 
     @Test
     fun processedFileMoved() {
         val path = Path.of("test")
         val current = Path.of("test_moved")
-        val streamId = StreamId("test", Direction.SECOND)
-        state.fileProcessed(streamId, path)
+        val group = group(1)
+        state.fileProcessed(group, path)
 
         expect {
-            that(state.isFileProcessed(streamId, path)).isTrue()
+            that(state.isFileProcessed(group, path)).isTrue()
             that(state.fileMoved(path, current)).isTrue()
-            that(state.isFileProcessed(streamId, path)).isFalse()
+            that(state.isFileProcessed(group, path)).isFalse()
         }
     }
 
     @Test
     fun processedFilesRemoved() {
         val path = Path.of("test")
-        val streamId = StreamId("test", Direction.SECOND)
-        state.fileProcessed(streamId, path)
+        val group = group(1)
+        state.fileProcessed(group, path)
 
         expect {
-            that(state.isFileProcessed(streamId, path)).isTrue()
+            that(state.isFileProcessed(group, path)).isTrue()
             state.processedFilesRemoved(listOf(path))
-            that(state.isFileProcessed(streamId, path)).isFalse()
+            that(state.isFileProcessed(group, path)).isFalse()
         }
     }
 
     @Test
     fun isStreamIdExcluded() {
-        val streamId = StreamId("test", Direction.FIRST)
-        state.excludeStreamId(streamId)
+        val group = group(1)
+        state.excludeDataGroup(group)
 
         expect {
-            that(state.isStreamIdExcluded(streamId)).isTrue()
-            that(state.isStreamIdExcluded(StreamId("test", Direction.SECOND))).isFalse()
+            that(state.isDataGroupExcluded(group)).isTrue()
+            that(state.isDataGroupExcluded(group(2))).isFalse()
         }
     }
 
@@ -100,5 +102,9 @@ internal class TestInMemoryReaderState {
             that(state[streamId]).isSameInstanceAs(data)
             that(state[StreamId("test", Direction.FIRST)]).isNull()
         }
+    }
+
+    companion object {
+        private fun group(id: Int) = TestGroup(id)
     }
 }

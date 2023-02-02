@@ -19,6 +19,7 @@ package com.exactpro.th2.read.file.common.impl
 
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.read.file.common.AbstractFileTest
+import com.exactpro.th2.read.file.common.DataGroupKey
 import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.recovery.RecoverableException
 import org.junit.jupiter.api.Test
@@ -33,6 +34,7 @@ import strikt.api.expect
 import strikt.api.expectThat
 import strikt.api.expectThrows
 import strikt.assertions.first
+import strikt.assertions.getValue
 import strikt.assertions.hasSize
 import strikt.assertions.isA
 import strikt.assertions.isEmpty
@@ -40,7 +42,6 @@ import strikt.assertions.isEqualTo
 import strikt.assertions.isFalse
 import strikt.assertions.isTrue
 import java.io.LineNumberReader
-import java.lang.Thread.sleep
 import java.nio.charset.MalformedInputException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -52,17 +53,19 @@ internal class TestLineParser : AbstractFileTest() {
     @TempDir
     lateinit var dir: Path
     private val staleTimeout = Duration.ofSeconds(1)
-    private val filter: BiPredicate<StreamId, String> = mock { onGeneric { test(any(), any()) }.thenReturn(true) }
+    private val filter: BiPredicate<TestGroup, String> = mock { onGeneric { test(any(), any()) }.thenReturn(true) }
     private val transformer: Function<String, String> = mock { onGeneric { apply(any()) }.thenAnswer { it.getArgument(0, String::class.java) } }
-    private val parser = LineParser(filter, transformer)
+    private val parser = LineParser({ it, _ -> it.streamId }, filter, transformer)
+
+    private data class TestGroup(val streamId: StreamId) : DataGroupKey
 
     @Test
     internal fun `can parse file with more that one line`() {
         val dataFile = createFile(dir, "data.txt")
         appendTo(dataFile, "line 1", "line 2")
         BufferedReaderSourceWrapper(Files.newBufferedReader(dataFile)).use { sourceWrapper ->
-            val streamId = StreamId("test", Direction.FIRST)
-            expectThat(parser.canParse(streamId, sourceWrapper.source, false)).isTrue()
+            val testGroup = TestGroup(StreamId("test", Direction.FIRST))
+            expectThat(parser.canParse(testGroup, sourceWrapper.source, false)).isTrue()
         }
     }
 
@@ -72,7 +75,10 @@ internal class TestLineParser : AbstractFileTest() {
         appendTo(dataFile, "line 1", "line 2")
         BufferedReaderSourceWrapper(Files.newBufferedReader(dataFile)).use { sourceWrapper ->
             val streamId = StreamId("test", Direction.FIRST)
-            expectThat(parser.parse(streamId, sourceWrapper.source))
+            val testGroup = TestGroup(streamId)
+            expectThat(parser.parse(testGroup, sourceWrapper.source))
+                .hasSize(1)
+                .getValue(streamId)
                 .hasSize(1)
                 .first()
                 .get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("line 1")
@@ -85,8 +91,8 @@ internal class TestLineParser : AbstractFileTest() {
         val dataFile = createFile(dir, "data.txt")
         appendTo(dataFile, "line 1", lfInEnd = appendLf)
         BufferedReaderSourceWrapper(Files.newBufferedReader(dataFile)).use { sourceWrapper ->
-            val streamId = StreamId("test", Direction.FIRST)
-            expectThat(parser.canParse(streamId, sourceWrapper.source, false)).isFalse()
+            val testGroup = TestGroup(StreamId("test", Direction.FIRST))
+            expectThat(parser.canParse(testGroup, sourceWrapper.source, false)).isFalse()
         }
     }
 
@@ -96,18 +102,21 @@ internal class TestLineParser : AbstractFileTest() {
         appendTo(dataFile, "line 1", lfInEnd = true)
         BufferedReaderSourceWrapper(Files.newBufferedReader(dataFile)).use { sourceWrapper ->
             val streamId = StreamId("test", Direction.FIRST)
+            val testGroup = TestGroup(streamId)
 
             sourceWrapper.mark()
-            expectThat(parser.canParse(streamId, sourceWrapper.source, false)).isFalse()
+            expectThat(parser.canParse(testGroup, sourceWrapper.source, false)).isFalse()
             sourceWrapper.reset()
 
             appendTo(dataFile, "line 2")
 
             sourceWrapper.mark()
-            expectThat(parser.canParse(streamId, sourceWrapper.source, false)).isTrue()
+            expectThat(parser.canParse(testGroup, sourceWrapper.source, false)).isTrue()
             sourceWrapper.reset()
 
-            expectThat(parser.parse(streamId, sourceWrapper.source))
+            expectThat(parser.parse(testGroup, sourceWrapper.source))
+                .hasSize(1)
+                .getValue(streamId)
                 .hasSize(1)
                 .first()
                 .get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("line 1")
@@ -120,13 +129,14 @@ internal class TestLineParser : AbstractFileTest() {
         appendTo(dataFile, "line 1", lfInEnd = false)
         BufferedReaderSourceWrapper(Files.newBufferedReader(dataFile)).use { sourceWrapper ->
             val streamId = StreamId("test", Direction.FIRST)
+            val testGroup = TestGroup(streamId)
             sourceWrapper.mark()
-            expectThat(parser.canParse(streamId, sourceWrapper.source, false)).isFalse()
+            expectThat(parser.canParse(testGroup, sourceWrapper.source, false)).isFalse()
             sourceWrapper.reset()
 
             appendTo(dataFile, "line 2")
 
-            expectThat(parser.canParse(streamId, sourceWrapper.source, false)).isFalse()
+            expectThat(parser.canParse(testGroup, sourceWrapper.source, false)).isFalse()
         }
     }
 
@@ -136,17 +146,18 @@ internal class TestLineParser : AbstractFileTest() {
         appendTo(dataFile, "line 1", lfInEnd = false)
         BufferedReaderSourceWrapper(Files.newBufferedReader(dataFile)).use { sourceWrapper ->
             val streamId = StreamId("test", Direction.FIRST)
+            val testGroup = TestGroup(streamId)
             sourceWrapper.mark()
-            expectThat(parser.canParse(streamId, sourceWrapper.source, false)).isFalse()
+            expectThat(parser.canParse(testGroup, sourceWrapper.source, false)).isFalse()
             sourceWrapper.reset()
 
             expect {
-                sleep(staleTimeout.toMillis())
-
                 sourceWrapper.mark()
-                that(parser.canParse(streamId, sourceWrapper.source, true)).isTrue()
+                that(parser.canParse(testGroup, sourceWrapper.source, true)).isTrue()
                 sourceWrapper.reset()
-                that(parser.parse(streamId, sourceWrapper.source))
+                that(parser.parse(testGroup, sourceWrapper.source))
+                    .hasSize(1)
+                    .getValue(streamId)
                     .hasSize(1)
                     .first()
                     .get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("line 1")
@@ -161,13 +172,20 @@ internal class TestLineParser : AbstractFileTest() {
         }
         whenever(filter.test(any(), eq("Line 2"))).thenReturn(false)
         val streamId = StreamId("test", Direction.FIRST)
+        val testGroup = TestGroup(streamId)
 
         Files.newBufferedReader(file).use {
             expect {
-                that(parser.parse(streamId, it)).hasSize(1).first()
+                that(parser.parse(testGroup, it)).hasSize(1)
+                    .getValue(streamId)
+                    .hasSize(1)
+                    .first()
                     .get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 1")
-                that(parser.parse(streamId, it)).isEmpty()
-                that(parser.parse(streamId, it)).hasSize(1).first()
+                that(parser.parse(testGroup, it)).isEmpty()
+                that(parser.parse(testGroup, it)).hasSize(1)
+                    .getValue(streamId)
+                    .hasSize(1)
+                    .first()
                     .get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 3")
             }
         }
@@ -180,10 +198,14 @@ internal class TestLineParser : AbstractFileTest() {
         }
         whenever(transformer.apply(eq("Line 1"))).thenReturn("Transformed line 1")
         val streamId = StreamId("test", Direction.FIRST)
+        val testGroup = TestGroup(streamId)
 
         Files.newBufferedReader(file).use {
             expect {
-                that(parser.parse(streamId, it)).hasSize(1).first()
+                that(parser.parse(testGroup, it)).hasSize(1)
+                    .getValue(streamId)
+                    .hasSize(1)
+                    .first()
                     .get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Transformed line 1")
             }
         }
@@ -197,13 +219,14 @@ internal class TestLineParser : AbstractFileTest() {
         }
 
         val streamId = StreamId("test", Direction.FIRST)
+        val testGroup = TestGroup(streamId)
 
         val source: () -> LineNumberReader = { LineNumberReader(Files.newBufferedReader(file, Charsets.UTF_8)) }
         RecoverableBufferedReaderWrapper(source()).use { original ->
 
             original.mark()
             expectThrows<RecoverableException> {
-                parser.canParse(streamId, original.source, false)
+                parser.canParse(testGroup, original.source, false)
             }.get { cause }.isA<MalformedInputException>()
             original.reset()
 
@@ -212,9 +235,12 @@ internal class TestLineParser : AbstractFileTest() {
 
                 expect {
                     recovered.mark()
-                    that(parser.canParse(streamId, recovered.source, true)).isTrue()
+                    that(parser.canParse(testGroup, recovered.source, true)).isTrue()
                     recovered.reset()
-                    that(parser.parse(streamId, recovered.source)).hasSize(1).first()
+                    that(parser.parse(testGroup, recovered.source)).hasSize(1)
+                        .getValue(streamId)
+                        .hasSize(1)
+                        .first()
                         .get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 1±")
                 }
             }

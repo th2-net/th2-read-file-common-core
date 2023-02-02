@@ -29,19 +29,13 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
-import org.mockito.kotlin.doAnswer
-import org.mockito.kotlin.doReturn
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.verify
-import org.mockito.kotlin.whenever
 import strikt.api.expectThat
 import strikt.assertions.get
 import strikt.assertions.hasSize
 import strikt.assertions.isEqualTo
 import strikt.assertions.single
 import java.io.BufferedReader
-import java.nio.file.Files
-import java.nio.file.attribute.BasicFileAttributes
 import java.time.Duration
 import java.time.Instant
 
@@ -113,12 +107,14 @@ internal class TestReaderDropsOldTimestamp : AbstractReaderTest() {
             .single().get { metadataBuilder }.get { timestamp }.isEqualTo(creationTime.toTimestamp())
     }
 
-    override fun createParser(): ContentParser<BufferedReader> {
-        return object : LineParser() {
-            override fun parse(streamId: StreamId, source: BufferedReader): Collection<RawMessage.Builder> {
-                return super.parse(streamId, source).onEach {
-                    val data = it.body.toStringUtf8()
-                    it.metadataBuilder.timestamp = Instant.parse(data).toTimestamp()
+    override fun createParser(): ContentParser<BufferedReader, StreamIdGroup> {
+        return object : LineParser<StreamIdGroup>(streamIdExtractor) {
+            override fun parse(dataGroup: StreamIdGroup, source: BufferedReader): Map<StreamId, Collection<RawMessage.Builder>> {
+                return super.parse(dataGroup, source).onEach { (_, msgs) ->
+                    msgs.onEach {
+                        val data = it.body.toStringUtf8()
+                        it.metadataBuilder.timestamp = Instant.parse(data).toTimestamp()
+                    }
                 }
             }
         }

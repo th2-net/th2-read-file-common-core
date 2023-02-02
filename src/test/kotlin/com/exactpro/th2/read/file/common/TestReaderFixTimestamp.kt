@@ -61,9 +61,10 @@ class TestReaderFixTimestamp : AbstractReaderTest() {
             }
         )
         doAnswer {
-            val source = it.arguments[1] as BufferedReader
+            val group = it.getArgument<StreamIdGroup>(0)
+            val source = it.getArgument<BufferedReader>(1)
             source.readLine()
-            return@doAnswer values
+            mapOf(group.streamId to values)
         }.whenever(parser).parse(any(), any())
 
         createFile(dir, "A-0").also {

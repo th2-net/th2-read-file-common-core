@@ -29,6 +29,7 @@ import com.exactpro.th2.read.file.common.metric.FilesMetric
 import com.exactpro.th2.read.file.common.metric.ReaderMetric
 import com.exactpro.th2.read.file.common.recovery.RecoverableException
 import com.exactpro.th2.read.file.common.recovery.RecoverableFileSourceWrapper
+import com.exactpro.th2.read.file.common.state.GroupData
 import com.exactpro.th2.read.file.common.state.ReaderState
 import com.exactpro.th2.read.file.common.state.StreamData
 import com.google.protobuf.TextFormat.shortDebugString
@@ -46,22 +47,22 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
-abstract class AbstractFileReader<T : AutoCloseable>(
+abstract class AbstractFileReader<T : AutoCloseable, K : DataGroupKey>(
     private val configuration: CommonFileReaderConfiguration,
-    private val directoryChecker: DirectoryChecker,
-    private val contentParser: ContentParser<T>,
-    private val readerState: ReaderState,
-    private val readerListener: ReaderListener,
+    private val directoryChecker: DirectoryChecker<K>,
+    private val contentParser: ContentParser<T, K>,
+    private val readerState: ReaderState<K>,
+    private val readerListener: ReaderListener<K>,
     private val sequenceGenerator: (StreamId) -> Long = DEFAULT_SEQUENCE_GENERATOR,
     private val messageFilters: Collection<ReadMessageFilter> = emptyList(),
 ) : AutoCloseable {
     constructor(
         configuration: CommonFileReaderConfiguration,
-        directoryChecker: DirectoryChecker,
-        contentParser: ContentParser<T>,
-        readerState: ReaderState,
+        directoryChecker: DirectoryChecker<K>,
+        contentParser: ContentParser<T, K>,
+        readerState: ReaderState<K>,
         onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit,
-        onError: (StreamId?, String, Exception) -> Unit = { _, _, _ -> },
+        onError: (K?, String, Exception) -> Unit = { _, _, _ -> },
         sequenceGenerator: (StreamId) -> Long = DEFAULT_SEQUENCE_GENERATOR
     ) : this(
         configuration,
@@ -75,23 +76,23 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     @Volatile
     private var closed: Boolean = false
 
-    private val currentFilesByStreamId: MutableMap<StreamId, FileHolder<T>> = ConcurrentHashMap()
-    private val contentByStreamId: MutableMap<StreamId, PublicationHolder> = ConcurrentHashMap()
-    private val pendingStreams: MutableSet<StreamId> = ConcurrentHashMap.newKeySet()
+    private val currentFilesByDataGroup: MutableMap<K, FileHolder<T>> = ConcurrentHashMap()
+    private val contentByDataGroup: MutableMap<K, MutableMap<StreamId, PublicationHolder>> = ConcurrentHashMap()
+    private val pendingGroups: MutableSet<K> = ConcurrentHashMap.newKeySet()
     @Volatile
-    private var cachedUpdates: Map<StreamId, Path> = emptyMap()
+    private var cachedUpdates: Map<K, Path> = emptyMap()
     @Volatile
     private var lastPullUpdates: Instant = Instant.MIN
 
     private lateinit var fileTracker: MovedFileTracker
     private val trackerListener = object : MovedFileTracker.FileTrackerListener {
         override fun moved(prev: Path, current: Path) {
-            val entry = currentFilesByStreamId.entries.find { it.value.path == prev }
+            val entry = currentFilesByDataGroup.entries.find { it.value.path == prev }
             if (entry != null) {
-                val (streamId, holderWithPathMatch) = entry
+                val (group, holderWithPathMatch) = entry
                 LOGGER.info { "File $prev moved to $current" }
                 holderWithPathMatch.moved()
-                readerState.fileProcessed(streamId, current)
+                readerState.fileProcessed(group, current)
             } else {
                 if (readerState.fileMoved(prev, current)) {
                     LOGGER.info { "Already processed $prev file was moved to $current. Update processed files list" }
@@ -101,7 +102,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
         override fun removed(paths: Set<Path>) {
             readerState.processedFilesRemoved(paths)
-            val holderWithRemovedFiles = currentFilesByStreamId.values
+            val holderWithRemovedFiles = currentFilesByDataGroup.values
                 .filter { paths.contains(it.path) }
             if (holderWithRemovedFiles.isEmpty()) {
                 return
@@ -180,33 +181,37 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
         LOGGER.debug { "Checking updates" }
         try {
-            var holdersByStreamId: Map<StreamId, FileHolder<T>> = emptyMap()
+            var holdersByGroup: Map<K, FileHolder<T>> = emptyMap()
             var updateRequired = true
             do {
                 if (updateRequired) {
-                    holdersByStreamId = ReaderMetric.measurePulling { holdersToProcess() }
+                    holdersByGroup = ReaderMetric.measurePulling { holdersToProcess() }
                     lastPullUpdates = Instant.now()
                     updateRequired = false
                 }
-                LOGGER.debug { "Get ${holdersByStreamId.size} holder(s) to process" }
-                for ((streamId, fileHolder) in holdersByStreamId) {
-                    val holderProcessed = ReaderMetric.measureReading { processHolderForStream(streamId, fileHolder) }
+                LOGGER.debug { "Get ${holdersByGroup.size} holder(s) to process" }
+                for ((group, fileHolder) in holdersByGroup) {
+                    val holderProcessed = ReaderMetric.measureReading { processHolderForGroup(group, fileHolder) }
                     updateRequired = updateRequired or holderProcessed
                 }
 
-                for ((streamId, holder) in contentByStreamId) {
-                    if (!configuration.unlimitedPublication && isPublicationLimitExceeded(streamId, holder, configuration.maxBatchesPerSecond)) {
-                        continue
+                for ((_, holderByStream) in contentByDataGroup) {
+                    for ((streamId, holder) in holderByStream) {
+                        if (!configuration.unlimitedPublication
+                            && isPublicationLimitExceeded(streamId, holder, configuration.maxBatchesPerSecond)
+                        ) {
+                            continue
+                        }
+                        holder.tryToPublish(streamId)
                     }
-                    holder.tryToPublish(streamId)
                 }
                 updateRequired = updateRequired or (Duration.between(lastPullUpdates, Instant.now()) >= configuration.minDelayBetweenUpdates)
-            } while (holdersByStreamId.isNotEmpty() && !Thread.currentThread().isInterrupted)
+            } while (holdersByGroup.isNotEmpty() && !Thread.currentThread().isInterrupted)
             LOGGER.debug { "Checking finished" }
         } catch (ex: TruncatedSourceException) {
             LOGGER.error(ex) { "Source was truncated but it is not allowed by configuration" }
-            readerListener.onError(ex.streamId, "Source was truncated but it is not allowed by configuration", ex)
-            failStreamId(ex.streamId, ex.holder, ex)
+            readerListener.onError(ex.castedGroup(), "Source was truncated but it is not allowed by configuration", ex)
+            failStreamId(ex.castedGroup(), null, ex.holder, ex)
         } catch (ex: Exception) {
             LOGGER.error(ex) { "Error during processing updates" }
             readerListener.onError(null, "Error during processing updates", ex)
@@ -219,50 +224,52 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     /**
      * Returns `true` if current file was fully processed (normally or with error)
      */
-    private fun processHolderForStream(
-        streamId: StreamId,
-        fileHolder: FileHolder<T>
+    private fun processHolderForGroup(
+        dataGroup: K,
+        fileHolder: FileHolder<T>,
     ): Boolean {
-        val streamData = readerState[streamId]
-        LOGGER.trace { "Processing holder for $streamId ($streamData). $fileHolder" }
-        if (checkFileDrop(fileHolder, streamId, streamData)) {
+        val groupData: GroupData? = readerState[dataGroup]
+        LOGGER.trace { "Processing holder for $dataGroup ($groupData). $fileHolder" }
+        if (checkFileDrop(fileHolder, dataGroup, groupData)) {
             return true
         }
 
-        if (isPublicationLimitExceeded(streamId)) {
-            LOGGER.trace { "The publication limit in ${configuration.maxBatchesPerSecond} batch/s for $streamId exceeded. Suspend reading" }
+        if (isAnyPublicationLimitExceeded(dataGroup)) {
+            LOGGER.trace { "The publication limit in ${configuration.maxBatchesPerSecond} batch/s for $dataGroup exceeded. Suspend reading" }
             return false
         }
 
-        val readContent: Collection<RawMessage.Builder> = try {
-            readMessages(streamId, fileHolder)
+        val readContent: Map<StreamId, Collection<RawMessage.Builder>> = try {
+            readMessages(dataGroup, fileHolder)
         } catch (ex: Exception) {
-            LOGGER.error(ex) { "Error during reading messages for $streamId. File holder: $fileHolder" }
-            readerListener.onError(streamId, "Cannot read data from the file ${fileHolder.path}", ex)
-            failStreamId(streamId, fileHolder, ex)
+            LOGGER.error(ex) { "Error during reading messages for $dataGroup. File holder: $fileHolder" }
+            readerListener.onError(dataGroup, "Cannot read data from the file ${fileHolder.path}", ex)
+            failStreamId(dataGroup, null, fileHolder, ex)
             return true
         }
 
         val sourceWrapper: FileSourceWrapper<T> = fileHolder.sourceWrapper
         if (readContent.isEmpty()) {
             if (!sourceWrapper.hasMoreData) {
-                closeSourceIfAllowed(streamId, fileHolder)
+                closeSourceIfAllowed(dataGroup, fileHolder)
             }
             return true
         }
 
-        val finalContent = onContentRead(streamId, fileHolder.path, readContent)
+        var fullyProcessed = false
+        for ((streamId, messages) in readContent) {
+            val streamData: StreamData? = readerState[streamId]
+            val finalContent = onContentRead(dataGroup, streamId, fileHolder.path, messages)
 
-        if (finalContent.isEmpty()) {
-            LOGGER.trace { "No data to process after 'onContentRead' call, current state: ${fileHolder.readState}" }
-            return false
-        }
+            if (finalContent.isEmpty()) {
+                LOGGER.trace { "No data to process after 'onContentRead' call for $streamId, current state: ${fileHolder.readState}" }
+                continue // try next stream ID
+            }
 
-        finalContent.also { originalContent ->
-            val filteredContent: Collection<RawMessage.Builder> = originalContent.filterReadContent(streamId, streamData)
+            val filteredContent: Collection<RawMessage.Builder> = finalContent.filterReadContent(streamId, streamData)
             if (filteredContent.isEmpty()) {
-                LOGGER.trace { "No content messages left for $streamId after filtering" }
-                return@also
+                LOGGER.trace { "No content messages left for $streamId in $dataGroup group after filtering" }
+                continue // try next stream ID
             }
             if (!configuration.leaveLastFileOpen) {
                 filteredContent.markMessagesWithTag(fileHolder)
@@ -272,27 +279,28 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 validateContent(streamId, filteredContent, streamData)
             } catch (ex: Exception) {
                 LOGGER.error(ex) {
-                    "Failed to validate content for stream $streamId ($fileHolder):" +
+                    "Failed to validate content for stream $streamId in group $dataGroup ($fileHolder):" +
                         " ${filteredContent.joinToString { shortDebugString(it) }}"
                 }
-                failStreamId(streamId, fileHolder, ex)
-                return true
+                failStreamId(dataGroup, streamId, fileHolder, ex)
+                fullyProcessed = true // because it caused an error, and we cannot safely continue reading
+                continue // try next stream ID
             }
-            tryPublishContent(streamId, filteredContent)
+            tryPublishContent(dataGroup, streamId, filteredContent)
         }
-        return false
+        return fullyProcessed
     }
 
     private fun checkFileDrop(
         fileHolder: FileHolder<T>,
-        streamId: StreamId,
-        streamData: StreamData?
+        groupKey: K,
+        groupData: GroupData?,
     ): Boolean {
         val fileInfo = FilterFileInfo(fileHolder.path, fileHolder.lastModificationTime.toInstant(), configuration.staleTimeout)
-        val filter = messageFilters.find { it.drop(streamId, fileInfo, streamData) }
+        val filter = messageFilters.find { it.drop(groupKey, fileInfo, groupData) }
         if (filter != null) {
-            LOGGER.info { "Source $fileInfo is dropped by filter ${filter::class.simpleName}. Stream data: $streamData" }
-            closeSourceIfAllowed(streamId, fileHolder, FilesMetric.ProcessStatus.DROPPED)
+            LOGGER.info { "Source $fileInfo is dropped by filter ${filter::class.simpleName}. Group data: $groupData" }
+            closeSourceIfAllowed(groupKey, fileHolder, FilesMetric.ProcessStatus.DROPPED)
             return true
         }
         return false
@@ -332,14 +340,16 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             return
         }
         try {
-            contentByStreamId.forEach { (streamId, holder) ->
-                with(holder) {
-                    if (content.isNotEmpty()) {
-                        publish(streamId)
+            contentByDataGroup.forEach { (_, holders) ->
+                holders.forEach { (streamId, holder) ->
+                    with(holder) {
+                        if (content.isNotEmpty()) {
+                            publish(streamId)
+                        }
                     }
                 }
             }
-            currentFilesByStreamId.values.forEach(this::closeSource)
+            currentFilesByDataGroup.forEach(this::closeSource)
             if (::fileTracker.isInitialized) {
                 fileTracker -= trackerListener
             }
@@ -348,12 +358,12 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
     }
 
-    protected open fun canBeClosed(streamId: StreamId, fileHolder: FileHolder<T>): Boolean {
-        val canCloseTheLastFile = canCloseTheLastFileFor(streamId, fileHolder)
+    protected open fun canBeClosed(dataGroup: K, fileHolder: FileHolder<T>): Boolean {
+        val canCloseTheLastFile = canCloseTheLastFileFor(dataGroup, fileHolder)
         return (canCloseTheLastFile && noChangesForStaleTimeout(fileHolder))
             || !fileHolder.isActual
             || !fileHolder.stillExist
-            || canForceFileClosing(streamId, fileHolder, fileHolder.sourceWrapper)
+            || canForceFileClosing(dataGroup, fileHolder, fileHolder.sourceWrapper)
             || fileHolder.isFileEndReached
     }
 
@@ -363,26 +373,27 @@ abstract class AbstractFileReader<T : AutoCloseable>(
      * @return whether the file should be closed or not
      */
     protected open fun canForceFileClosing(
-        streamId: StreamId,
+        dataGroup: K,
         fileHolder: FileHolder<T>,
         sourceWrapper: FileSourceWrapper<T>
     ): Boolean = false
 
     /**
-     * Will be invoked when the new source file for [streamId] is found.
+     * Will be invoked when the new source file for [dataGroup] is found.
      */
     protected open fun onSourceFound(
-        streamId: StreamId,
+        dataGroup: K,
         path: Path,
     ) {
         // do nothing
     }
 
     /**
-     * Will be invoke on each read content.
+     * Will be invoked on each read content.
      * Can be used to modify the [RawMessage.Builder] before publishing them
      */
     protected open fun onContentRead(
+        dataGroup: K,
         streamId: StreamId,
         path: Path,
         readContent: Collection<RawMessage.Builder>,
@@ -391,10 +402,10 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     }
 
     /**
-     * Will be invoked when an error is accurate during processing the source from [path] file for [StreamId]
+     * Will be invoked when an error is accurate during processing the source from [path] file for [DataGroupKey]
      */
     protected open fun onSourceCorrupted(
-        streamId: StreamId,
+        dataGroup: K,
         path: Path,
         cause: Exception,
     ) {
@@ -405,7 +416,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
      * Will be invoked when the source if finished and is closed
      */
     protected open fun onSourceClosed(
-        streamId: StreamId,
+        dataGroup: K,
         path: Path,
     ) {
         // do nothing
@@ -413,9 +424,9 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     protected abstract fun canReadRightNow(holder: FileHolder<T>, staleTimeout: Duration): Boolean
 
-    protected abstract fun acceptFile(streamId: StreamId, currentFile: Path?, newFile: Path): Boolean
+    protected abstract fun acceptFile(dataGroup: K, currentFile: Path?, newFile: Path): Boolean
 
-    protected abstract fun createSource(streamId: StreamId, path: Path): FileSourceWrapper<T>
+    protected abstract fun createSource(dataGroup: K, path: Path): FileSourceWrapper<T>
 
     private fun setCommonInformation(
         streamId: StreamId,
@@ -442,22 +453,24 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     protected fun noChangesForStaleTimeout(fileHolder: FileHolder<T>): Boolean = !fileHolder.changed &&
         abs(System.currentTimeMillis() - fileHolder.lastModificationTime.toMillis()) > configuration.staleTimeout.toMillis()
 
-    protected fun canCloseTheLastFileFor(streamId: StreamId, holder: FileHolder<T>): Boolean {
+    protected fun canCloseTheLastFileFor(dataGroup: K, holder: FileHolder<T>): Boolean {
         return if (configuration.leaveLastFileOpen) {
-            hasNewFilesFor(streamId, holder)
+            hasNewFilesFor(dataGroup, holder)
         } else {
             true
         }
     }
 
-    private fun hasNewFilesFor(streamId: StreamId, holder: FileHolder<T>): Boolean =
-        pullUpdates()[streamId]?.let { isNotTheSameFile(it, holder) } ?: false
+    private fun hasNewFilesFor(dataGroup: K, holder: FileHolder<T>): Boolean =
+        pullUpdates()[dataGroup]?.let { isNotTheSameFile(it, holder) } ?: false
 
     private fun tryPublishContent(
+        groupKey: K,
         streamId: StreamId,
         readContent: Collection<RawMessage.Builder>
     ) {
-        val publicationHolder = contentByStreamId.computeIfAbsent(streamId) { PublicationHolder() }
+        val publicationHolder = contentByDataGroup.computeIfAbsent(groupKey) { ConcurrentHashMap() }
+            .computeIfAbsent(streamId) { PublicationHolder() }
         with(publicationHolder) {
             tryToPublish(streamId, readContent.size)
             content.addAll(readContent)
@@ -492,50 +505,55 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     }
 
     private fun closeSourceIfAllowed(
-        streamId: StreamId,
+        groupData: K,
         fileHolder: FileHolder<T>,
         terminalStatus: FilesMetric.ProcessStatus = FilesMetric.ProcessStatus.PROCESSED,
     ) {
         val path = fileHolder.path
         LOGGER.debug { "Source for $path file does not have any additional data yet. Check if we can close it" }
-        if (canBeClosed(streamId, fileHolder)) {
+        if (canBeClosed(groupData, fileHolder)) {
             FilesMetric.incStatus(terminalStatus)
-            terminateSource(streamId, fileHolder)
-            onSourceClosed(streamId, fileHolder.path)
+            terminateSource(groupData, fileHolder)
+            onSourceClosed(groupData, fileHolder.path)
         }
     }
 
     private fun failStreamId(
-        streamId: StreamId,
+        dataGroup: K,
+        streamId: StreamId?,
         fileHolder: FileHolder<*>,
         cause: Exception
     ) {
-        LOGGER.debug { "Terminating source from file ${fileHolder.path} for stream $streamId" }
-        terminateSource(streamId, fileHolder)
+        LOGGER.debug { "Terminating source from file ${fileHolder.path} for data group $dataGroup (stream: $streamId)" }
+        terminateSource(dataGroup, fileHolder)
         if (configuration.continueOnFailure) {
             LOGGER.warn { "Continue processing files for stream $streamId ignoring error when reading file ${fileHolder.path}: $cause" }
             if (fileHolder.stillExist) {
-                readerState.fileProcessed(streamId, fileHolder.path)
+                readerState.fileProcessed(dataGroup, fileHolder.path)
             }
         } else {
-            readerState.excludeStreamId(streamId)
+            readerState.excludeDataGroup(dataGroup)
         }
         FilesMetric.incStatus(FilesMetric.ProcessStatus.ERROR)
-        onSourceCorrupted(streamId, fileHolder.path, cause)
+        onSourceCorrupted(dataGroup, fileHolder.path, cause)
     }
 
     private fun terminateSource(
-        streamId: StreamId,
-        fileHolder: FileHolder<*>
+        dataGroup: K,
+        fileHolder: FileHolder<*>,
     ) {
-        closeSource(fileHolder)
-        currentFilesByStreamId.remove(streamId)
+        closeSource(dataGroup, fileHolder)
+        currentFilesByDataGroup.remove(dataGroup)
         if (fileHolder.isActual) {
-            readerState.fileProcessed(streamId, fileHolder.path)
+            readerState.fileProcessed(dataGroup, fileHolder.path)
         }
     }
 
-    private fun closeSource(fileHolder: FileHolder<*>) {
+    private fun closeSource(dataGroup: K, fileHolder: FileHolder<*>) {
+        val prevData: GroupData? = readerState[dataGroup]
+        val lastSourceModificationTimestamp = fileHolder.lastModificationTime.toInstant()
+        readerState[dataGroup] = prevData?.copy(lastSourceModificationTimestamp = lastSourceModificationTimestamp)
+            ?: GroupData(lastSourceModificationTimestamp)
         val path = fileHolder.path
         LOGGER.info { "Closing source for $path file" }
         runCatching { fileHolder.close() }
@@ -544,23 +562,23 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     }
 
     private fun readMessages(
-        streamId: StreamId,
+        dataGroup: K,
         holder: FileHolder<T>
-    ): Collection<RawMessage.Builder> {
+    ): Map<StreamId, Collection<RawMessage.Builder>> {
         if (!holder.sourceWrapper.hasMoreData) {
-            return emptyList()
+            return emptyMap()
         }
-        var content: Collection<RawMessage.Builder> = emptyList()
+        var content: Map<StreamId, Collection<RawMessage.Builder>> = emptyMap()
 
         with(holder.sourceWrapper) {
             do {
                 mark()
                 val canParse: Boolean = try {
-                    contentParser.canParse(streamId, source, noChangesForStaleTimeout(holder)).also {
+                    contentParser.canParse(dataGroup, source, noChangesForStaleTimeout(holder)).also {
                         reset()
                     }
                 } catch (ex: RecoverableException) {
-                    LOGGER.debug(ex) { "The source for $streamId (${holder.path}) requires to be reopen and recovered" }
+                    LOGGER.debug(ex) { "The source for $dataGroup (${holder.path}) requires to be reopen and recovered" }
                     if (!holder.supportRecovery) {
                         LOGGER.error { "Recovery is not supported by the source ${holder.sourceWrapper::class.qualifiedName} for file ${holder.path}" }
                         throw ex
@@ -570,9 +588,9 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                     false
                 }
                 if (canParse) {
-                    content = contentParser.parse(streamId, source)
+                    content = contentParser.parse(dataGroup, source)
                     if (content.isNotEmpty()) {
-                        LOGGER.trace { "Read ${content.size} message(s) for $streamId from ${holder.path}" }
+                        LOGGER.trace { "Read ${content.size} message(s) for $dataGroup from ${holder.path}" }
                         break
                     }
                 }
@@ -630,93 +648,108 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
     }
 
-    private fun holdersToProcess(): Map<StreamId, FileHolder<T>> {
+    private fun holdersToProcess(): Map<K, FileHolder<T>> {
         LOGGER.debug { "Collecting holders to process" }
         if (!configuration.disableFileMovementTracking) {
             LOGGER.debug { "Pulling file system events" }
             fileTracker.pollFileSystemEvents(10, TimeUnit.MILLISECONDS)
         }
-        val newFiles: Map<StreamId, Path> = pullUpdates(useCache = false)
+        val newFiles: Map<K, Path> = pullUpdates(useCache = false)
         LOGGER.debug { "New files: $newFiles" }
-        val streams = newFiles.keys + currentFilesByStreamId.keys
+        val dataGroups = newFiles.keys + currentFilesByDataGroup.keys
 
-        val holdersByStreamId: MutableMap<StreamId, FileHolder<T>> = hashMapOf()
-        for (streamId in streams) {
-            LOGGER.debug { "Checking holder for $streamId" }
-            val fileHolder = currentFilesByStreamId[streamId] ?: run {
-                newFiles[streamId]?.toFileHolder(streamId)?.also {
-                    currentFilesByStreamId[streamId] = it
-                    sourceFound(streamId, it)
+        val sharedFiles: Map<Path, Set<K>> = newFiles.entries.groupBy(
+            Map.Entry<K, Path>::value,
+            Map.Entry<K, Path>::key,
+        ).mapValues {
+            it.value.toSet() - currentFilesByDataGroup.keys
+        }.filterValues { it.isNotEmpty() }
+        if (sharedFiles.isNotEmpty()) {
+            LOGGER.debug { "Shared files: $sharedFiles" }
+        }
+
+        val holdersByStreamId: MutableMap<K, FileHolder<T>> = hashMapOf()
+        for (group in dataGroups) {
+            LOGGER.debug { "Checking holder for $group" }
+            val fileHolder = currentFilesByDataGroup[group] ?: run {
+                newFiles[group]?.toFileHolder(group)?.also {
+                    currentFilesByDataGroup[group] = it
+                    sourceFound(group, it)
                 }
             }
 
             if (fileHolder == null) {
-                LOGGER.trace { "No data for $streamId. Wait for the next attempt" }
+                LOGGER.trace { "No data for $group. Wait for the next attempt" }
                 continue
             }
 
-            LOGGER.debug { "Refreshing file info for $streamId ($fileHolder)" }
+            LOGGER.debug { "Refreshing file info for $group ($fileHolder)" }
             fileHolder.refreshFileInfo()
             if (fileHolder.truncated) {
                 if (!configuration.allowFileTruncate) {
-                    throw TruncatedSourceException(streamId, fileHolder)
+                    throw TruncatedSourceException(group, fileHolder)
                 }
                 LOGGER.info { "File ${fileHolder.path} was truncated. Start reading from the beginning" }
                 fileHolder.reopen()
             }
-            LOGGER.debug { "Checking if can read from source for $streamId ($fileHolder)" }
+            LOGGER.debug { "Checking if can read from source for $group ($fileHolder)" }
             if (!canReadRightNow(fileHolder, configuration.staleTimeout)) {
-                if (addToPending(streamId)) {
+                if (addToPending(group)) {
                     LOGGER.debug { "Cannot read $fileHolder right now. Wait for the next attempt" }
                 } else {
-                    LOGGER.trace { "Still cannot read ${fileHolder.path} for stream $streamId. Wait for next attempt" }
+                    LOGGER.trace { "Still cannot read ${fileHolder.path} for stream $group. Wait for next attempt" }
                 }
                 continue
             }
 
-            LOGGER.debug { "Checking if ${fileHolder.path} source can be closed for stream $streamId" }
-            if (!fileHolder.sourceWrapper.hasMoreData && !canBeClosed(streamId, fileHolder)) {
-                if (addToPending(streamId)) {
+            LOGGER.debug { "Checking if ${fileHolder.path} source can be closed for stream $group" }
+            if (!fileHolder.sourceWrapper.hasMoreData && !canBeClosed(group, fileHolder)) {
+                if (addToPending(group)) {
                     LOGGER.debug {
-                        "The ${fileHolder.path} file for stream $streamId cannot be closed yet and does not have any data. " +
+                        "The ${fileHolder.path} file for stream $group cannot be closed yet and does not have any data. " +
                             "Wait for the next read attempt"
                     }
                 } else {
                     LOGGER.trace {
-                        "The ${fileHolder.path} file for stream $streamId cannot be closed yet and still does not have any data. " +
+                        "The ${fileHolder.path} file for stream $group cannot be closed yet and still does not have any data. " +
                             "Wait for the next read attempt"
                     }
                 }
                 continue
             }
 
-            holdersByStreamId[streamId] = fileHolder
+            holdersByStreamId[group] = fileHolder
         }
         removeFromPending(holdersByStreamId.keys)
         return holdersByStreamId
     }
 
-    private fun sourceFound(streamId: StreamId, it: FileHolder<T>) {
+    private fun sourceFound(dataGroup: K, it: FileHolder<T>) {
         FilesMetric.incStatus(FilesMetric.ProcessStatus.FOUND)
-        onSourceFound(streamId, it.path)
+        onSourceFound(dataGroup, it.path)
     }
 
-    private fun addToPending(id: StreamId): Boolean {
-        return pendingStreams.add(id)
+    private fun addToPending(id: K): Boolean {
+        return pendingGroups.add(id)
     }
 
-    private fun removeFromPending(ids: Set<StreamId>) {
-        pendingStreams.removeAll(ids)
+    private fun removeFromPending(ids: Set<K>) {
+        pendingGroups.removeAll(ids)
     }
 
-    private fun isPublicationLimitExceeded(streamId: StreamId): Boolean {
+    private fun isAnyPublicationLimitExceeded(dataGroup: K): Boolean {
         val limit = configuration.maxBatchesPerSecond
         // fast way if no limit
         if (configuration.unlimitedPublication) {
             return false
         }
-        val publicationHolder = contentByStreamId[streamId] ?: return false
-        return isPublicationLimitExceeded(streamId, publicationHolder, limit)
+        val holdersByStreamId: Map<StreamId, PublicationHolder> = contentByDataGroup[dataGroup] ?: return false
+        for ((streamId, holder) in holdersByStreamId) {
+            if (isPublicationLimitExceeded(streamId, holder, limit)) {
+                return true
+            }
+        }
+        return false
     }
 
     private fun isPublicationLimitExceeded(
@@ -731,22 +764,22 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         return publicationHolder.isLimitExceeded(limit)
     }
 
-    private fun pullUpdates(useCache: Boolean = true): Map<StreamId, Path> {
+    private fun pullUpdates(useCache: Boolean = true): Map<K, Path> {
         if (useCache && cachedUpdates.isNotEmpty()) {
             return cachedUpdates
         }
-        return directoryChecker.check { streamId, path ->
-            val fileHolder = currentFilesByStreamId[streamId]
+        return directoryChecker.check { dataGroup, path ->
+            val fileHolder = currentFilesByDataGroup[dataGroup]
             when {
-                readerState.isFileProcessed(streamId, path) -> false
-                readerState.isStreamIdExcluded(streamId) -> {
-                    LOGGER.warn { "StreamID $streamId is excluded from further processing" }
+                readerState.isFileProcessed(dataGroup, path) -> false
+                readerState.isDataGroupExcluded(dataGroup) -> {
+                    LOGGER.warn { "DataGroup $dataGroup is excluded from further processing" }
                     FilesMetric.incStatus(FilesMetric.ProcessStatus.DROPPED)
-                    readerState.fileProcessed(streamId, path)
+                    readerState.fileProcessed(dataGroup, path)
                     false
                 }
-                else -> isNotTheSameFile(path, fileHolder) && acceptFile(streamId, fileHolder?.path, path).also {
-                    LOGGER.trace { "Calling 'acceptFile' for $path (streamId: $streamId). Current file: ${fileHolder?.path} with result $it" }
+                else -> isNotTheSameFile(path, fileHolder) && acceptFile(dataGroup, fileHolder?.path, path).also {
+                    LOGGER.trace { "Calling 'acceptFile' for $path (dataGroup: $dataGroup). Current file: ${fileHolder?.path} with result $it" }
                 }
             }
         }.also {
@@ -908,17 +941,24 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     )
 
     private class TruncatedSourceException(
-        val streamId: StreamId,
+        val dataGroup: DataGroupKey,
         val holder: FileHolder<*>
     ) : Exception() {
-        override val message: String = "File ${holder.path} for stream ID $streamId was truncated"
+        override val message: String = "File ${holder.path} for stream ID $dataGroup was truncated"
+
+        companion object {
+            private const val serialVersionUID: Long = -242207363318682233L
+        }
     }
 
-    private fun Path.toFileHolder(streamId: StreamId): FileHolder<T>? {
+    @Suppress("UNCHECKED_CAST") // should never happen
+    private fun <T : DataGroupKey> TruncatedSourceException.castedGroup(): T = dataGroup as T
+
+    private fun Path.toFileHolder(dataGroup: K): FileHolder<T>? {
         return try {
             FileHolder(this) {
                 LOGGER.info { "Opening source for $it file" }
-                createSource(streamId, it)
+                createSource(dataGroup, it)
             }
         } catch (ex: NoSuchFileException) {
             LOGGER.error(ex) { "Cannot create holder for $this because file does not exist anymore" }

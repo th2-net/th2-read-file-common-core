@@ -39,13 +39,17 @@ abstract class AbstractReaderTest : AbstractFileTest() {
     @TempDir
     lateinit var dir: Path
     protected val defaultStaleTimeout: Duration = Duration.ofSeconds(1)
-    protected lateinit var parser: ContentParser<BufferedReader>
+    protected lateinit var parser: ContentParser<BufferedReader, StreamIdGroup>
     protected val onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit = mock { }
-    protected val onSourceClosed: (StreamId, Path) -> Unit = mock { }
-    protected lateinit var reader: AbstractFileReader<BufferedReader>
+    protected val onSourceClosed: (DataGroupKey, Path) -> Unit = mock { }
+    protected lateinit var reader: AbstractFileReader<BufferedReader, StreamIdGroup>
     protected lateinit var configuration: CommonFileReaderConfiguration
-    protected lateinit var readerState: ReaderState
-    private lateinit var directoryChecker: DirectoryChecker
+    protected lateinit var readerState: ReaderState<StreamIdGroup>
+    private lateinit var directoryChecker: DirectoryChecker<StreamIdGroup>
+
+    protected val streamIdExtractor: (StreamIdGroup, String) -> StreamId = { it, _ -> it.streamId }
+
+    protected data class StreamIdGroup(val streamId: StreamId) : DataGroupKey
 
     @BeforeEach
     internal fun setUp() {
@@ -78,13 +82,13 @@ abstract class AbstractReaderTest : AbstractFileTest() {
             .build()
     }
 
-    protected open fun createParser(): ContentParser<BufferedReader> = LineParser()
+    protected open fun createParser(): ContentParser<BufferedReader, StreamIdGroup> = LineParser(streamIdExtractor)
 
-    protected open fun createSource(id: StreamId, path: Path): FileSourceWrapper<BufferedReader> =
+    protected open fun createSource(id: StreamIdGroup, path: Path): FileSourceWrapper<BufferedReader> =
         BufferedReaderSourceWrapper(Files.newBufferedReader(path))
 
-    protected open fun createExtractor(): (Path) -> Set<StreamId> = { path ->
-        path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) }?.let {
+    protected open fun createExtractor(): (Path) -> Set<StreamIdGroup> = { path ->
+        path.nameParts().firstOrNull()?.let { StreamIdGroup(StreamId(it, Direction.FIRST)) }?.let {
             setOf(it)
         } ?: emptySet()
     }

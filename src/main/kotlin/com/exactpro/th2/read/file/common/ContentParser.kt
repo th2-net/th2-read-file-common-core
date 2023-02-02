@@ -19,7 +19,7 @@ package com.exactpro.th2.read.file.common
 
 import com.exactpro.th2.common.grpc.RawMessage
 
-interface ContentParser<in T> {
+interface ContentParser<in T, in K : DataGroupKey> {
 
     /**
      * @param considerNoFutureUpdates if it is `true` the source was not changed for a timeout
@@ -28,13 +28,13 @@ interface ContentParser<in T> {
      * @throws com.exactpro.th2.read.file.common.recovery.RecoverableException if the source needs to be reopen and recovered.
      * It is possible only if the source wrapper implements [com.exactpro.th2.read.file.common.recovery.RecoverableFileSourceWrapper]
      */
-    fun canParse(streamId: StreamId, source: T, considerNoFutureUpdates: Boolean): Boolean
+    fun canParse(dataGroup: K, source: T, considerNoFutureUpdates: Boolean): Boolean
 
     /**
-     * @return a collection of [RawMessage.Builder]s to be sent to the storage.
+     * @return a map between [StreamId] and collection of [RawMessage.Builder]s to be sent to the storage.
      *         If the collection is empty and more data can be parsed from the source
      *         another attempt to extract data will be performed
      */
-    fun parse(streamId: StreamId, source: T): Collection<RawMessage.Builder>
+    fun parse(dataGroup: K, source: T): Map<StreamId, Collection<RawMessage.Builder>>
 
 }
