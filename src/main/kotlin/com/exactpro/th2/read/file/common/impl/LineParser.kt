@@ -19,6 +19,7 @@ package com.exactpro.th2.read.file.common.impl
 
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.ContentParser
+import com.exactpro.th2.read.file.common.DataGroupKey
 import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.recovery.RecoverableException
 import com.google.protobuf.ByteString
@@ -28,12 +29,13 @@ import java.nio.charset.MalformedInputException
 import java.util.function.BiPredicate
 import java.util.function.Function
 
-open class LineParser @JvmOverloads constructor(
-    private val filter: BiPredicate<StreamId, String> = BiPredicate { _, _ -> true },
+open class LineParser<in K : DataGroupKey> @JvmOverloads constructor(
+    private val extractStreamId: (K, String) -> StreamId,
+    private val filter: BiPredicate<K, String> = BiPredicate { _, _ -> true },
     private val transformer: Function<String, String> = Function { it }
-) : ContentParser<BufferedReader> {
+) : ContentParser<BufferedReader, K> {
 
-    override fun canParse(streamId: StreamId, source: BufferedReader, considerNoFutureUpdates: Boolean): Boolean {
+    override fun canParse(dataGroup: K, source: BufferedReader, considerNoFutureUpdates: Boolean): Boolean {
         val nextLine: String? = readNextPossibleLine(source, considerNoFutureUpdates)
         if (source.ready()) {
             return true
@@ -41,12 +43,12 @@ open class LineParser @JvmOverloads constructor(
         return nextLine != null && considerNoFutureUpdates
     }
 
-    override fun parse(streamId: StreamId, source: BufferedReader): Collection<RawMessage.Builder> {
+    override fun parse(dataGroup: K, source: BufferedReader): Map<StreamId, Collection<RawMessage.Builder>> {
         val readLine = source.readLine()
-        return if (readLine == null || !filter.test(streamId, readLine)) {
-            emptyList()
+        return if (readLine == null || !filter.test(dataGroup, readLine)) {
+            emptyMap()
         } else {
-            lineToMessages(streamId, readLine.let(transformer::apply))
+            lineToMessages(dataGroup, readLine.let(transformer::apply))
         }
     }
 
@@ -60,8 +62,14 @@ open class LineParser @JvmOverloads constructor(
         throw RecoverableException(ex)
     }
 
-    protected open fun lineToMessages(streamId: StreamId, readLine: String): List<RawMessage.Builder> =
-        listOf(lineToBuilder(readLine))
+    protected open fun lineToMessages(dataGroup: K, readLine: String): Map<StreamId, Collection<RawMessage.Builder>> {
+        val builders = listOf(lineToBuilder(readLine))
+        return if (builders.isNotEmpty()) {
+            mapOf(extractStreamId(dataGroup, readLine) to builders)
+        } else {
+            emptyMap()
+        }
+    }
 
     @JvmOverloads
     protected fun lineToBuilder(readLine: String, charset: Charset = Charsets.UTF_8): RawMessage.Builder =

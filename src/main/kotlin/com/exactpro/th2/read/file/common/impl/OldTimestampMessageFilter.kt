@@ -18,15 +18,19 @@
 package com.exactpro.th2.read.file.common.impl
 
 import com.exactpro.th2.common.grpc.RawMessageOrBuilder
+import com.exactpro.th2.read.file.common.DataGroupKey
 import com.exactpro.th2.read.file.common.FilterFileInfo
 import com.exactpro.th2.read.file.common.ReadMessageFilter
 import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.extensions.toInstant
+import com.exactpro.th2.read.file.common.state.GroupData
 import com.exactpro.th2.read.file.common.state.StreamData
 import java.time.Duration
 
 /**
  * Filters messages that have timestamp less than the last timestamp from [StreamData]
+ * and files that have last modification timestamp less than
+ * the modification timestamp of the last read file for group ([GroupData])
  */
 object OldTimestampMessageFilter : ReadMessageFilter {
     override fun drop(
@@ -42,14 +46,10 @@ object OldTimestampMessageFilter : ReadMessageFilter {
             || (streamData.lastTimestamp == messageTimestamp && streamData.lastContent == message.body)
     }
 
-    override fun drop(
-        streamId: StreamId,
-        fileInfo: FilterFileInfo,
-        streamData: StreamData?
-    ): Boolean {
-        if (streamData == null) {
+    override fun drop(groupKey: DataGroupKey, fileInfo: FilterFileInfo, groupData: GroupData?): Boolean {
+        if (groupData == null) {
             return false
         }
-        return Duration.between(fileInfo.lastModified, streamData.lastTimestamp) > fileInfo.staleTimeout
+        return Duration.between(fileInfo.lastModified, groupData.lastSourceModificationTimestamp) > fileInfo.staleTimeout
     }
 }

@@ -19,9 +19,11 @@ package com.exactpro.th2.read.file.common.impl
 
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.read.file.common.DataGroupKey
 import com.exactpro.th2.read.file.common.FilterFileInfo
 import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.extensions.toTimestamp
+import com.exactpro.th2.read.file.common.state.GroupData
 import com.exactpro.th2.read.file.common.state.StreamData
 import com.google.protobuf.ByteString
 import org.junit.jupiter.api.Nested
@@ -35,6 +37,7 @@ import java.time.Instant
 
 internal class TestOldTimestampMessageFilter {
     private val streamId = StreamId("test", Direction.FIRST)
+    private object TestGroup : DataGroupKey
 
     @Nested
     inner class Message {
@@ -105,50 +108,53 @@ internal class TestOldTimestampMessageFilter {
         @Test
         fun `drops old files`() {
             val timestamp = Instant.now()
-            val streamData = createStreamData(timestamp)
+            val streamData = createGroupData(timestamp)
             val fileInfo = createFileInfo(timestamp.minusSeconds(2))
 
-            expectThat(OldTimestampMessageFilter.drop(streamId, fileInfo, streamData)).isTrue()
+            expectThat(OldTimestampMessageFilter.drop(TestGroup, fileInfo, streamData)).isTrue()
         }
 
         @Test
         fun `does not drop old files if stale timeout is not passed`() {
             val timestamp = Instant.now()
-            val streamData = createStreamData(timestamp)
+            val streamData = createGroupData(timestamp)
             val fileInfo = createFileInfo(timestamp.minusSeconds(1))
 
-            expectThat(OldTimestampMessageFilter.drop(streamId, fileInfo, streamData)).isFalse()
+            expectThat(OldTimestampMessageFilter.drop(TestGroup, fileInfo, streamData)).isFalse()
         }
 
         @Test
         fun `does not drop file with same timestamp`() {
             val timestamp = Instant.now()
-            val streamData = createStreamData(timestamp)
+            val streamData = createGroupData(timestamp)
             val fileInfo = createFileInfo(timestamp)
 
-            expectThat(OldTimestampMessageFilter.drop(streamId, fileInfo, streamData)).isFalse()
+            expectThat(OldTimestampMessageFilter.drop(TestGroup, fileInfo, streamData)).isFalse()
         }
 
         @Test
         fun `does not drop newer file`() {
             val timestamp = Instant.now()
-            val streamData = createStreamData(timestamp)
+            val streamData = createGroupData(timestamp)
             val fileInfo = createFileInfo(timestamp.plusMillis(1))
 
-            expectThat(OldTimestampMessageFilter.drop(streamId, fileInfo, streamData)).isFalse()
+            expectThat(OldTimestampMessageFilter.drop(TestGroup, fileInfo, streamData)).isFalse()
         }
 
         @Test
         fun `does not drop if stream data is not set`() {
             val timestamp = Instant.now()
-            val streamData: StreamData? = null
+            val streamData: GroupData? = null
             val fileInfo = createFileInfo(timestamp)
 
-            expectThat(OldTimestampMessageFilter.drop(streamId, fileInfo, streamData)).isFalse()
+            expectThat(OldTimestampMessageFilter.drop(TestGroup, fileInfo, streamData)).isFalse()
         }
 
-        private fun createFileInfo(timestamp: Instant): FilterFileInfo = FilterFileInfo(Path.of("test"), timestamp, Duration.ofSeconds(1))
     }
+
+    private fun createGroupData(timestamp: Instant) = GroupData(lastSourceModificationTimestamp = timestamp)
+
+    private fun createFileInfo(timestamp: Instant): FilterFileInfo = FilterFileInfo(Path.of("test"), timestamp, Duration.ofSeconds(1))
 
     private fun createStreamData(timestamp: Instant, content: ByteString = ByteString.EMPTY) = StreamData(timestamp, -1, content)
 }

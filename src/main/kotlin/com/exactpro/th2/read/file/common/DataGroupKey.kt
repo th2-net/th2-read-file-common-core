@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,10 @@
 
 package com.exactpro.th2.read.file.common
 
-import com.exactpro.th2.common.grpc.RawMessage
-
-interface ReaderListener<in K : DataGroupKey> {
-    fun onStreamData(streamId: StreamId, messages: List<RawMessage.Builder>)
-    fun onError(dataGroup: K?, message: String, cause: Exception)
-}
+/**
+ * This is a marker interface for data group keys.
+ * It is used by [AbstractFileReader] to group files for processing.
+ *
+ * **The implementations must implement [Any.equals] and [Any.hashCode] methods and be suitable for [Map] keys**
+ */
+interface DataGroupKey

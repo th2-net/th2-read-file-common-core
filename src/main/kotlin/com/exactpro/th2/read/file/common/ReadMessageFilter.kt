@@ -18,6 +18,7 @@
 package com.exactpro.th2.read.file.common
 
 import com.exactpro.th2.common.grpc.RawMessageOrBuilder
+import com.exactpro.th2.read.file.common.state.GroupData
 import com.exactpro.th2.read.file.common.state.StreamData
 import java.nio.file.Path
 import java.time.Duration
@@ -38,14 +39,14 @@ interface ReadMessageFilter {
 
     /**
      * Returns `true` if the whole file should be dropped from processing
-     * @param streamId stream identificator
+     * @param groupKey data group identificator
      * @param fileInfo information about current file
-     * @param streamData state for the current [streamId]
+     * @param groupData state for the current [groupKey]
      */
     fun drop(
-        streamId: StreamId,
+        groupKey: DataGroupKey,
         fileInfo: FilterFileInfo,
-        streamData: StreamData?,
+        groupData: GroupData?,
     ): Boolean
 }
 

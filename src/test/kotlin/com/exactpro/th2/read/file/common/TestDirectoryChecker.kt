@@ -33,6 +33,9 @@ import java.nio.file.attribute.FileTime
 import java.util.Comparator
 
 internal class TestDirectoryChecker : AbstractFileTest() {
+    private data class TestGroup(val name: String) : DataGroupKey
+
+    private fun group(name: String) = TestGroup(name)
 
     @Test
     internal fun `retrieves first files`(@TempDir dest: Path) {
@@ -42,13 +45,13 @@ internal class TestDirectoryChecker : AbstractFileTest() {
         val directoryChecker = DirectoryChecker(
             dest,
             LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() },
-            { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } }
+            { path -> path.nameParts().firstOrNull()?.let { TestGroup(it) } }
         )
         expectThat(directoryChecker.check())
             .isNotEmpty()
             .hasSize(2)
-            .hasEntry(StreamId("streamA", Direction.FIRST), dest.resolve("streamA-0"))
-            .hasEntry(StreamId("streamB", Direction.FIRST), dest.resolve("streamB-0"))
+            .hasEntry(group("streamA"), dest.resolve("streamA-0"))
+            .hasEntry(group("streamB"), dest.resolve("streamB-0"))
     }
 
     @Test
@@ -59,13 +62,13 @@ internal class TestDirectoryChecker : AbstractFileTest() {
         val directoryChecker = DirectoryChecker(
             dest,
             LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() },
-            { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } },
+            { path -> path.nameParts().firstOrNull()?.let { group(it) } },
             { path -> path.fileName.toString().contains("streamA") }
         )
         expectThat(directoryChecker.check())
             .isNotEmpty()
             .hasSize(1)
-            .hasEntry(StreamId("streamA", Direction.FIRST), dest.resolve("streamA-0"))
+            .hasEntry(group("streamA"), dest.resolve("streamA-0"))
     }
 
     @Test
@@ -76,16 +79,16 @@ internal class TestDirectoryChecker : AbstractFileTest() {
         val directoryChecker = DirectoryChecker(
             dest,
             LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() },
-            { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } }
+            { path -> path.nameParts().firstOrNull()?.let { group(it) } }
         )
 
-        val filterPath = { _: StreamId, path: Path -> path.nameParts().last().toInt() > 1 }
+        val filterPath = { _: TestGroup, path: Path -> path.nameParts().last().toInt() > 1 }
 
         expectThat(directoryChecker.check(filterPath))
             .isNotEmpty()
             .hasSize(2)
-            .hasEntry(StreamId("streamA", Direction.FIRST), dest.resolve("streamA-2"))
-            .hasEntry(StreamId("streamB", Direction.FIRST), dest.resolve("streamB-2"))
+            .hasEntry(group("streamA"), dest.resolve("streamA-2"))
+            .hasEntry(group("streamB"), dest.resolve("streamB-2"))
     }
 
     @Test
@@ -96,10 +99,10 @@ internal class TestDirectoryChecker : AbstractFileTest() {
         val directoryChecker = DirectoryChecker(
             dest,
             LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() },
-            { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } }
+            { path -> path.nameParts().firstOrNull()?.let { group(it) } }
         )
 
-        val filterPath = { _: StreamId, path: Path -> path.nameParts().last().toInt() > 1 }
+        val filterPath = { _: TestGroup, path: Path -> path.nameParts().last().toInt() > 1 }
 
         expectThat(directoryChecker.check(filterPath)).isEmpty()
     }

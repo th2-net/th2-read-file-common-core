@@ -18,18 +18,19 @@
 package com.exactpro.th2.read.file.common.impl
 
 import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.read.file.common.DataGroupKey
 import com.exactpro.th2.read.file.common.ReaderListener
 import com.exactpro.th2.read.file.common.StreamId
 
-class DelegateReaderListener(
+class DelegateReaderListener<in K : DataGroupKey>(
     private val onStreamDataDelegate: (StreamId, List<RawMessage.Builder>) -> Unit = { _, _ -> },
-    private val onErrorDelegate: (StreamId?, String, Exception) -> Unit = { _, _, _ -> },
-) : ReaderListener {
+    private val onErrorDelegate: (K?, String, Exception) -> Unit = { _, _, _ -> },
+) : ReaderListener<K> {
     override fun onStreamData(streamId: StreamId, messages: List<RawMessage.Builder>) {
         onStreamDataDelegate(streamId, messages)
     }
 
-    override fun onError(streamId: StreamId?, message: String, cause: Exception) {
-        onErrorDelegate(streamId, message, cause)
+    override fun onError(dataGroup: K?, message: String, cause: Exception) {
+        onErrorDelegate(dataGroup, message, cause)
     }
 }

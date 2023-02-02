@@ -1,4 +1,4 @@
-# Read file common core for common (1.5.1)
+# Read file common core for common (2.0.0)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 
@@ -169,6 +169,16 @@ The message will be dropped if the current state for StreamId contains **lastTim
 The file will be dropped if its last modification time is less than **lastTimestamp** for current StreamID + **staleTimeout**.
 
 ## Changes
+
+### 2.0.0
+
+**Breaking changes**
+
++ Source is now separated from StreamID. That allows produce more than one StreamID from a single source.
+  The implementation decides how to group sources in order to provide correct stream of messages.
++ The `DataGroupKey` interface was introduced. This is the key to groups sources.
+  The implementations of this interface must correctly implement `equals` and `hasCode` methods.
+  (because they can be used as a key in `Map`)
 
 ### 1.5.1
 
