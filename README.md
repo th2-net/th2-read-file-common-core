@@ -176,6 +176,10 @@ The file will be dropped if its last modification time is less than **lastTimest
 
 + Migrated to common for book & pages
   + Added supplier for initial MessageID with prefilled data
+  
+### 1.5.1
+
++ BOM updated from `4.0.2` to `4.1.0`
 
 ### 1.5.0
 

@@ -13,6 +13,18 @@ plugins {
     id "io.github.gradle-nexus.publish-plugin" version "1.1.0"
     id 'signing'
     id 'org.jetbrains.dokka' version "$koltin_version"
+    id "org.owasp.dependencycheck" version "8.1.2"
+}
+
+dependencyCheck {
+    formats=['SARIF', 'JSON', 'HTML']
+    failBuildOnCVSS=5
+
+    analyzers {
+        assemblyEnabled = false
+        nugetconfEnabled = false
+        nodeEnabled = false
+    }
 }
 
 group 'com.exactpro.th2'
@@ -46,9 +58,9 @@ tasks.withType(KotlinCompile).configureEach {
 }
 
 dependencies {
-    api platform('com.exactpro.th2:bom:4.0.2')
+    api platform('com.exactpro.th2:bom:4.2.0')
 
-    api 'com.exactpro.th2:grpc-common:4.1.0-th2-2150-books-pages-3871780258-SNAPSHOT'
+    api 'com.exactpro.th2:grpc-common:4.2.0-dev'
 
     implementation 'com.google.guava:guava'
     implementation 'io.github.microutils:kotlin-logging:2.1.23'
@@ -175,4 +187,8 @@ signing {
     def signingPassword = findProperty("signingPassword")
     useInMemoryPgpKeys(signingKey, signingPassword)
     sign publishing.publications.mavenJava
+}
+
+dependencyLocking {
+    lockAllConfigurations()
 }
