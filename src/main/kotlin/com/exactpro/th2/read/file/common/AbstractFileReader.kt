@@ -243,13 +243,13 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             return
         }
         try {
-            contentByStreamId.forEach { (streamId, holder) ->
+            /*contentByStreamId.forEach { (streamId, holder) ->
                 with(holder) {
                     if (content.isNotEmpty()) {
                         publish(streamId)
                     }
                 }
-            }
+            }*/
             currentFilesByStreamId.values.forEach(this::closeSource)
             if (::fileTracker.isInitialized) {
                 fileTracker -= trackerListener
