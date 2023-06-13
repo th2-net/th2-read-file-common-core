@@ -34,7 +34,7 @@ import java.time.Duration
 import java.time.Instant
 
 internal class TestOldTimestampMessageFilter {
-    private val streamId = StreamId("test", Direction.FIRST)
+    private val streamId = StreamId("test")
 
     @Nested
     inner class Message {

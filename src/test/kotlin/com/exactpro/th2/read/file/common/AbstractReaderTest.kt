@@ -86,7 +86,7 @@ abstract class AbstractReaderTest : AbstractFileTest() {
         BufferedReaderSourceWrapper(Files.newBufferedReader(path))
 
     protected open fun createExtractor(): (Path) -> Set<StreamId> = { path ->
-        path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) }?.let {
+        path.nameParts().firstOrNull()?.let { StreamId(it) }?.let {
             setOf(it)
         } ?: emptySet()
     }

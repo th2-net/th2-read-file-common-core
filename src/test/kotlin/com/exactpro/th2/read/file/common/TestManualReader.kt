@@ -52,7 +52,7 @@ class TestManualReader : AbstractFileTest() {
     private val idExtractor: (Path) -> StreamId? = { path ->
         path.nameParts().let {
             if (it.size == 2) {
-                StreamId(it.first(), Direction.FIRST)
+                StreamId(it.first())
             } else {
                 null
             }

@@ -61,7 +61,7 @@ internal class TestLineParser : AbstractFileTest() {
         val dataFile = createFile(dir, "data.txt")
         appendTo(dataFile, "line 1", "line 2")
         BufferedReaderSourceWrapper(Files.newBufferedReader(dataFile)).use { sourceWrapper ->
-            val streamId = StreamId("test", Direction.FIRST)
+            val streamId = StreamId("test")
             expectThat(parser.canParse(streamId, sourceWrapper.source, false)).isTrue()
         }
     }
@@ -71,7 +71,7 @@ internal class TestLineParser : AbstractFileTest() {
         val dataFile = createFile(dir, "data.txt")
         appendTo(dataFile, "line 1", "line 2")
         BufferedReaderSourceWrapper(Files.newBufferedReader(dataFile)).use { sourceWrapper ->
-            val streamId = StreamId("test", Direction.FIRST)
+            val streamId = StreamId("test")
             expectThat(parser.parse(streamId, sourceWrapper.source))
                 .hasSize(1)
                 .first()
@@ -85,7 +85,7 @@ internal class TestLineParser : AbstractFileTest() {
         val dataFile = createFile(dir, "data.txt")
         appendTo(dataFile, "line 1", lfInEnd = appendLf)
         BufferedReaderSourceWrapper(Files.newBufferedReader(dataFile)).use { sourceWrapper ->
-            val streamId = StreamId("test", Direction.FIRST)
+            val streamId = StreamId("test")
             expectThat(parser.canParse(streamId, sourceWrapper.source, false)).isFalse()
         }
     }
@@ -95,7 +95,7 @@ internal class TestLineParser : AbstractFileTest() {
         val dataFile = createFile(dir, "data.txt")
         appendTo(dataFile, "line 1", lfInEnd = true)
         BufferedReaderSourceWrapper(Files.newBufferedReader(dataFile)).use { sourceWrapper ->
-            val streamId = StreamId("test", Direction.FIRST)
+            val streamId = StreamId("test")
 
             sourceWrapper.mark()
             expectThat(parser.canParse(streamId, sourceWrapper.source, false)).isFalse()
@@ -119,7 +119,7 @@ internal class TestLineParser : AbstractFileTest() {
         val dataFile = createFile(dir, "data.txt")
         appendTo(dataFile, "line 1", lfInEnd = false)
         BufferedReaderSourceWrapper(Files.newBufferedReader(dataFile)).use { sourceWrapper ->
-            val streamId = StreamId("test", Direction.FIRST)
+            val streamId = StreamId("test")
             sourceWrapper.mark()
             expectThat(parser.canParse(streamId, sourceWrapper.source, false)).isFalse()
             sourceWrapper.reset()
@@ -135,7 +135,7 @@ internal class TestLineParser : AbstractFileTest() {
         val dataFile = createFile(dir, "data.txt")
         appendTo(dataFile, "line 1", lfInEnd = false)
         BufferedReaderSourceWrapper(Files.newBufferedReader(dataFile)).use { sourceWrapper ->
-            val streamId = StreamId("test", Direction.FIRST)
+            val streamId = StreamId("test")
             sourceWrapper.mark()
             expectThat(parser.canParse(streamId, sourceWrapper.source, false)).isFalse()
             sourceWrapper.reset()
@@ -160,7 +160,7 @@ internal class TestLineParser : AbstractFileTest() {
             appendTo(it, "Line 1", "Line 2", "Line 3")
         }
         whenever(filter.test(any(), eq("Line 2"))).thenReturn(false)
-        val streamId = StreamId("test", Direction.FIRST)
+        val streamId = StreamId("test")
 
         Files.newBufferedReader(file).use {
             expect {
@@ -179,7 +179,7 @@ internal class TestLineParser : AbstractFileTest() {
             appendTo(it, "Line 1")
         }
         whenever(transformer.apply(eq("Line 1"))).thenReturn("Transformed line 1")
-        val streamId = StreamId("test", Direction.FIRST)
+        val streamId = StreamId("test")
 
         Files.newBufferedReader(file).use {
             expect {
@@ -196,7 +196,7 @@ internal class TestLineParser : AbstractFileTest() {
             appendTo(it, byteArrayOf(0xC2.toByte())) // the half of ±
         }
 
-        val streamId = StreamId("test", Direction.FIRST)
+        val streamId = StreamId("test")
 
         val source: () -> LineNumberReader = { LineNumberReader(Files.newBufferedReader(file, Charsets.UTF_8)) }
         RecoverableBufferedReaderWrapper(source()).use { original ->

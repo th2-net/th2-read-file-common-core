@@ -42,13 +42,13 @@ internal class TestDirectoryChecker : AbstractFileTest() {
         val directoryChecker = DirectoryChecker(
             dest,
             LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() },
-            { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } }
+            { path -> path.nameParts().firstOrNull()?.let { StreamId(it) } }
         )
         expectThat(directoryChecker.check())
             .isNotEmpty()
             .hasSize(2)
-            .hasEntry(StreamId("streamA", Direction.FIRST), dest.resolve("streamA-0"))
-            .hasEntry(StreamId("streamB", Direction.FIRST), dest.resolve("streamB-0"))
+            .hasEntry(StreamId("streamA"), dest.resolve("streamA-0"))
+            .hasEntry(StreamId("streamB"), dest.resolve("streamB-0"))
     }
 
     @Test
@@ -59,13 +59,13 @@ internal class TestDirectoryChecker : AbstractFileTest() {
         val directoryChecker = DirectoryChecker(
             dest,
             LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() },
-            { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } },
+            { path -> path.nameParts().firstOrNull()?.let { StreamId(it) } },
             { path -> path.fileName.toString().contains("streamA") }
         )
         expectThat(directoryChecker.check())
             .isNotEmpty()
             .hasSize(1)
-            .hasEntry(StreamId("streamA", Direction.FIRST), dest.resolve("streamA-0"))
+            .hasEntry(StreamId("streamA"), dest.resolve("streamA-0"))
     }
 
     @Test
@@ -76,7 +76,7 @@ internal class TestDirectoryChecker : AbstractFileTest() {
         val directoryChecker = DirectoryChecker(
             dest,
             LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() },
-            { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } }
+            { path -> path.nameParts().firstOrNull()?.let { StreamId(it) } }
         )
 
         val filterPath = { _: StreamId, path: Path -> path.nameParts().last().toInt() > 1 }
@@ -84,8 +84,8 @@ internal class TestDirectoryChecker : AbstractFileTest() {
         expectThat(directoryChecker.check(filterPath))
             .isNotEmpty()
             .hasSize(2)
-            .hasEntry(StreamId("streamA", Direction.FIRST), dest.resolve("streamA-2"))
-            .hasEntry(StreamId("streamB", Direction.FIRST), dest.resolve("streamB-2"))
+            .hasEntry(StreamId("streamA"), dest.resolve("streamA-2"))
+            .hasEntry(StreamId("streamB"), dest.resolve("streamB-2"))
     }
 
     @Test
@@ -96,7 +96,7 @@ internal class TestDirectoryChecker : AbstractFileTest() {
         val directoryChecker = DirectoryChecker(
             dest,
             LAST_MODIFICATION_TIME_COMPARATOR.thenComparing { path -> path.nameParts().last().toInt() },
-            { path -> path.nameParts().firstOrNull()?.let { StreamId(it, Direction.FIRST) } }
+            { path -> path.nameParts().firstOrNull()?.let { StreamId(it) } }
         )
 
         val filterPath = { _: StreamId, path: Path -> path.nameParts().last().toInt() > 1 }
