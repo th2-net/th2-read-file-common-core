@@ -98,7 +98,7 @@ internal class TestReaderDropsOldTimestamp : AbstractReaderTest() {
         createFile(dir, "A-1").apply {
             append("$creationTime", lfInEnd = true)
         }
-        readerState[StreamId("A", Direction.FIRST)] = StreamData(creationTime.minusMillis(1), -1, ByteString.EMPTY)
+        readerState[StreamId("A")] = StreamData(creationTime.minusMillis(1), -1, ByteString.EMPTY)
 
         assertTimeoutPreemptively(Duration.ofSeconds(1)) {
             reader.processUpdates()

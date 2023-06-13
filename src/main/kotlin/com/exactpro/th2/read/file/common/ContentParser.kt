@@ -33,7 +33,8 @@ interface ContentParser<in T> {
     /**
      * @return a collection of [RawMessage.Builder]s to be sent to the storage.
      *         If the collection is empty and more data can be parsed from the source
-     *         another attempt to extract data will be performed
+     *         another attempt to extract data will be performed.
+     *         The returned messages MUST have direction set
      */
     fun parse(streamId: StreamId, source: T): Collection<RawMessage.Builder>
 

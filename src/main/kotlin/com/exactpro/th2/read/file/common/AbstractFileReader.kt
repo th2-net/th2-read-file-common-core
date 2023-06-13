@@ -17,6 +17,7 @@
 
 package com.exactpro.th2.read.file.common
 
+import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageMetadata
 import com.exactpro.th2.common.grpc.RawMessageMetadataOrBuilder
@@ -415,7 +416,6 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                         timestamp = Instant.now().toTimestamp()
                     }
                     connectionIdBuilder.sessionAlias = streamId.sessionAlias
-                    direction = streamId.direction
                     setSequence(sequence++)
                 }
             }
@@ -580,6 +580,9 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
 
         content.forEach {
+            if (it.metadataBuilder.idBuilder.direction == Direction.UNRECOGNIZED) {
+                error("the direction was not set for message in stream $streamId")
+            }
             val (currentTimestamp, curSequence) = it.checkTimeAndSequence(streamId, lastTime, lastSequence)
             lastTime = currentTimestamp
             lastSequence = curSequence

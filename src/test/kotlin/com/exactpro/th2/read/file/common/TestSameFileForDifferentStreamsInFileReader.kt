@@ -93,10 +93,10 @@ internal class TestSameFileForDifferentStreamsInFileReader : AbstractReaderTest(
             val name = path.fileName.toString()
             hashSetOf<StreamId>().apply {
                 if (name.contains('A') || name.contains('C')) {
-                    add(StreamId("A", Direction.SECOND))
+                    add(StreamId("A"))
                 }
                 if (name.contains('B') || name.contains('C')) {
-                    add(StreamId("B", Direction.SECOND))
+                    add(StreamId("B"))
                 }
             }
         }
