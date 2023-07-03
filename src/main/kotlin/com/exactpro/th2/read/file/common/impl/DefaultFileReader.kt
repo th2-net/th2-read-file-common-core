@@ -43,6 +43,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
+import org.apache.commons.lang3.builder.ToStringBuilder
 import kotlin.math.abs
 
 abstract class DefaultFileReader<T : AutoCloseable, MESSAGE_BUILDER, ID_BUILDER> protected constructor(
@@ -322,9 +323,7 @@ class TransportDefaultFileReader<T : AutoCloseable> private constructor(
         }
     }
 
-    override fun messageBuilderShortDebugString(builder: RawMessage.Builder): String {
-        TODO("Not yet implemented")
-    }
+    override fun messageBuilderShortDebugString(builder: RawMessage.Builder): String = ToStringBuilder.reflectionToString(this)
 
     override fun RawMessage.Builder.toShortString(): String {
         val timestampOrNull: String? = try {
