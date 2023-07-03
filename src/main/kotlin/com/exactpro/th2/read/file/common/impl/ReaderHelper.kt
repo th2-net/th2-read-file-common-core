@@ -14,10 +14,10 @@
  * limitations under the License.
  *
  */
+
 @file:JvmName("ReaderHelper")
 package com.exactpro.th2.read.file.common.impl
 
-import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.read.file.common.AbstractFileReader
 import com.exactpro.th2.read.file.common.FileReaderHelper
 import com.exactpro.th2.read.file.common.ReadMessageFilter
@@ -26,20 +26,19 @@ import com.exactpro.th2.read.file.common.StreamId
 @Suppress("FunctionName")
 @JvmName("create")
 @JvmOverloads
-fun ReaderHelper(
-    messageIdGenerator: (StreamId) -> MessageID,
-    messageFilters: Collection<ReadMessageFilter> = emptySet(),
+fun <MESSAGE_BUILDER, MESSAGE_ID> ReaderHelper(
+    messageIdGenerator: (StreamId) -> MESSAGE_ID,
+    messageFilters: Collection<ReadMessageFilter<MESSAGE_BUILDER>> = emptySet(),
     sequenceGenerator: (StreamId) -> Long = AbstractFileReader.DEFAULT_SEQUENCE_GENERATOR,
-): FileReaderHelper {
+): FileReaderHelper<MESSAGE_BUILDER, MESSAGE_ID> {
     return ReaderHelperImpl(messageFilters, sequenceGenerator, messageIdGenerator)
 }
 
-private class ReaderHelperImpl(
-    override val messageFilters: Collection<ReadMessageFilter>,
+private class ReaderHelperImpl<MESSAGE_BUILDER, MESSAGE_ID>(
+    override val messageFilters: Collection<ReadMessageFilter<MESSAGE_BUILDER>>,
     private val sequenceGenerator: (StreamId) -> Long,
-    private val messageIdGenerator: (StreamId) -> MessageID,
-) : FileReaderHelper {
+    private val messageIdGenerator: (StreamId) -> MESSAGE_ID,
+) : FileReaderHelper<MESSAGE_BUILDER, MESSAGE_ID> {
     override fun generateSequence(streamId: StreamId): Long = sequenceGenerator(streamId)
-
-    override fun createMessageId(streamId: StreamId): MessageID = messageIdGenerator(streamId)
+    override fun createMessageId(streamId: StreamId): MESSAGE_ID = messageIdGenerator(streamId)
 }

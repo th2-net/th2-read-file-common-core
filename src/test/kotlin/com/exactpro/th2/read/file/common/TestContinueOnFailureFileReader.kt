@@ -26,7 +26,7 @@ import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doThrow
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
-import org.mockito.kotlin.verifyZeroInteractions
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import strikt.api.expect
 import strikt.assertions.all
@@ -50,7 +50,7 @@ internal class TestContinueOnFailureFileReader : AbstractReaderTest() {
             reader.processUpdates()
         }
 
-        verifyZeroInteractions(onStreamData)
+        verifyNoInteractions(onStreamData)
 
         val newFile = createFile(dir, "A-1")
         writeTo(newFile,  "Line 4", "Line 5", "Line 6")

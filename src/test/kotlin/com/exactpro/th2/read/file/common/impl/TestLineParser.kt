@@ -17,7 +17,6 @@
 
 package com.exactpro.th2.read.file.common.impl
 
-import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.read.file.common.AbstractFileTest
 import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.recovery.RecoverableException
@@ -54,7 +53,7 @@ internal class TestLineParser : AbstractFileTest() {
     private val staleTimeout = Duration.ofSeconds(1)
     private val filter: BiPredicate<StreamId, String> = mock { onGeneric { test(any(), any()) }.thenReturn(true) }
     private val transformer: Function<String, String> = mock { onGeneric { apply(any()) }.thenAnswer { it.getArgument(0, String::class.java) } }
-    private val parser = LineParser(filter, transformer)
+    private val parser = ProtoLineParser(filter, transformer)
 
     @Test
     internal fun `can parse file with more that one line`() {

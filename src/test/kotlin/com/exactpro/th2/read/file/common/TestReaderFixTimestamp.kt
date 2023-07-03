@@ -18,20 +18,18 @@
 package com.exactpro.th2.read.file.common
 
 import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
-import com.exactpro.th2.read.file.common.extensions.toTimestamp
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import strikt.api.expectThat
 import strikt.assertions.all
-import strikt.assertions.get
 import strikt.assertions.isEqualTo
 import java.io.BufferedReader
 import java.time.Duration

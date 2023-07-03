@@ -28,10 +28,10 @@ import java.nio.charset.MalformedInputException
 import java.util.function.BiPredicate
 import java.util.function.Function
 
-open class LineParser @JvmOverloads constructor(
+abstract class LineParser<MESSAGE_BUILDER> @JvmOverloads constructor(
     private val filter: BiPredicate<StreamId, String> = BiPredicate { _, _ -> true },
     private val transformer: Function<String, String> = Function { it }
-) : ContentParser<BufferedReader> {
+) : ContentParser<BufferedReader, MESSAGE_BUILDER> {
 
     override fun canParse(streamId: StreamId, source: BufferedReader, considerNoFutureUpdates: Boolean): Boolean {
         val nextLine: String? = readNextPossibleLine(source, considerNoFutureUpdates)
@@ -41,7 +41,7 @@ open class LineParser @JvmOverloads constructor(
         return nextLine != null && considerNoFutureUpdates
     }
 
-    override fun parse(streamId: StreamId, source: BufferedReader): Collection<RawMessage.Builder> {
+    override fun parse(streamId: StreamId, source: BufferedReader): Collection<MESSAGE_BUILDER> {
         val readLine = source.readLine()
         return if (readLine == null || !filter.test(streamId, readLine)) {
             emptyList()
@@ -60,10 +60,17 @@ open class LineParser @JvmOverloads constructor(
         throw RecoverableException(ex)
     }
 
-    protected open fun lineToMessages(streamId: StreamId, readLine: String): List<RawMessage.Builder> =
+    protected open fun lineToMessages(streamId: StreamId, readLine: String): List<MESSAGE_BUILDER> =
         listOf(lineToBuilder(readLine))
 
-    @JvmOverloads
-    protected fun lineToBuilder(readLine: String, charset: Charset = Charsets.UTF_8): RawMessage.Builder =
+    private fun lineToBuilder(readLine: String): MESSAGE_BUILDER = lineToBuilder(readLine, Charsets.UTF_8)
+    protected abstract fun lineToBuilder(readLine: String, charset: Charset = Charsets.UTF_8): MESSAGE_BUILDER
+}
+
+open class ProtoLineParser @JvmOverloads constructor(
+    filter: BiPredicate<StreamId, String> = BiPredicate { _, _ -> true },
+    transformer: Function<String, String> = Function { it }
+) : LineParser<RawMessage.Builder>(filter, transformer) {
+    override fun lineToBuilder(readLine: String, charset: Charset): RawMessage.Builder =
         RawMessage.newBuilder().setBody(ByteString.copyFrom(readLine.toByteArray(charset)))
 }

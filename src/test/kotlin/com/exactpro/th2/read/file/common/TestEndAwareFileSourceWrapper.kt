@@ -20,7 +20,7 @@ package com.exactpro.th2.read.file.common
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.impl.BufferedReaderSourceWrapper
-import com.exactpro.th2.read.file.common.impl.LineParser
+import com.exactpro.th2.read.file.common.impl.ProtoLineParser
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
 import org.mockito.kotlin.any
@@ -50,7 +50,7 @@ class TestEndAwareFileSourceWrapper : AbstractReaderTest() {
         return EndAwareBufferedReaderSource(EndAwareBufferedReader(path))
     }
 
-    override fun createParser(): ContentParser<BufferedReader> = EndAwareLineParser()
+    override fun createParser(): ContentParser<BufferedReader, RawMessage.Builder> = EndAwareLineParser()
 
     @Test
     fun `closes source before stale timeout expired`() {
@@ -85,7 +85,7 @@ class TestEndAwareFileSourceWrapper : AbstractReaderTest() {
             }
     }
 
-    private class EndAwareLineParser : LineParser(
+    private class EndAwareLineParser : ProtoLineParser(
         filter = { _, line -> line != END_MARKER }
     ) {
         override fun canParse(streamId: StreamId, source: BufferedReader, considerNoFutureUpdates: Boolean): Boolean {

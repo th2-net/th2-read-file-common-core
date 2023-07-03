@@ -17,11 +17,10 @@
 
 package com.exactpro.th2.read.file.common.impl
 
-import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.read.file.common.FilterFileInfo
 import com.exactpro.th2.read.file.common.StreamId
-import com.exactpro.th2.read.file.common.extensions.toTimestamp
 import com.exactpro.th2.read.file.common.state.StreamData
 import com.google.protobuf.ByteString
 import org.junit.jupiter.api.Nested

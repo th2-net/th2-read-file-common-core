@@ -17,9 +17,7 @@
 
 package com.exactpro.th2.read.file.common
 
-import com.exactpro.th2.common.grpc.RawMessage
-
-interface ContentParser<in T> {
+interface ContentParser<in T, MESSAGE_BUILDER> {
 
     /**
      * @param considerNoFutureUpdates if it is `true` the source was not changed for a timeout
@@ -31,11 +29,11 @@ interface ContentParser<in T> {
     fun canParse(streamId: StreamId, source: T, considerNoFutureUpdates: Boolean): Boolean
 
     /**
-     * @return a collection of [RawMessage.Builder]s to be sent to the storage.
+     * @return a collection of [MESSAGE_BUILDER]s to be sent to the storage.
      *         If the collection is empty and more data can be parsed from the source
      *         another attempt to extract data will be performed.
      *         The returned messages MUST have direction set
      */
-    fun parse(streamId: StreamId, source: T): Collection<RawMessage.Builder>
+    fun parse(streamId: StreamId, source: T): Collection<MESSAGE_BUILDER>
 
 }

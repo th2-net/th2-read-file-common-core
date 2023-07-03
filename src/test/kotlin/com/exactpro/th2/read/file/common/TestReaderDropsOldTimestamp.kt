@@ -17,31 +17,24 @@
 
 package com.exactpro.th2.read.file.common
 
-import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
-import com.exactpro.th2.read.file.common.extensions.toTimestamp
-import com.exactpro.th2.read.file.common.impl.LineParser
 import com.exactpro.th2.read.file.common.impl.OldTimestampMessageFilter
+import com.exactpro.th2.read.file.common.impl.ProtoLineParser
 import com.exactpro.th2.read.file.common.state.StreamData
 import com.google.protobuf.ByteString
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
-import org.mockito.kotlin.doAnswer
-import org.mockito.kotlin.doReturn
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.verify
-import org.mockito.kotlin.whenever
 import strikt.api.expectThat
 import strikt.assertions.get
 import strikt.assertions.hasSize
 import strikt.assertions.isEqualTo
 import strikt.assertions.single
 import java.io.BufferedReader
-import java.nio.file.Files
-import java.nio.file.attribute.BasicFileAttributes
 import java.time.Duration
 import java.time.Instant
 
@@ -54,7 +47,7 @@ internal class TestReaderDropsOldTimestamp : AbstractReaderTest() {
         )
     }
 
-    override val messageFilters: Collection<ReadMessageFilter>
+    override val messageFilters: Collection<ReadMessageFilter<RawMessage.Builder>>
         get() = listOf(OldTimestampMessageFilter)
 
     @Test
@@ -113,8 +106,8 @@ internal class TestReaderDropsOldTimestamp : AbstractReaderTest() {
             .single().get { metadataBuilder }.get { id }.get { timestamp }.isEqualTo(creationTime.toTimestamp())
     }
 
-    override fun createParser(): ContentParser<BufferedReader> {
-        return object : LineParser() {
+    override fun createParser(): ContentParser<BufferedReader, RawMessage.Builder> {
+        return object : ProtoLineParser() {
             override fun parse(streamId: StreamId, source: BufferedReader): Collection<RawMessage.Builder> {
                 return super.parse(streamId, source).onEach {
                     val data = it.body.toStringUtf8()
