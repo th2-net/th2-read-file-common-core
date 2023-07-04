@@ -98,7 +98,7 @@ abstract class DefaultFileReader<T : AutoCloseable, MESSAGE_BUILDER, ID_BUILDER>
         protected val contentParser: ContentParser<T, MESSAGE_BUILDER>,
         protected val fileTracker: MovedFileTracker,
         protected val readerState: ReaderState = InMemoryReaderState(),
-        protected val messageIdSupplier: (StreamId) -> ProtoMessageID,
+        protected val messageIdSupplier: (StreamId) -> MESSAGE_ID,
         protected val sourceFactory: (StreamId, Path) -> FileSourceWrapper<T>
     ) {
         protected var delegateHolder = DelegateHolder<T, MESSAGE_BUILDER>()
@@ -338,7 +338,9 @@ class TransportDefaultFileReader<T : AutoCloseable> private constructor(
     override var RawMessage.Builder.messageTimestamp: Instant
         get() = idBuilder().timestamp
         set(value) { idBuilder().setTimestamp(value) }
+
     override val RawMessage.Builder.sequence: Long get() = this.idBuilder().sequence
+
     override val RawMessage.Builder.directionIsNoteSet: Boolean
         get() = try {
             this.idBuilder().direction
@@ -346,5 +348,43 @@ class TransportDefaultFileReader<T : AutoCloseable> private constructor(
         } catch (e: IllegalStateException) {
             false
         }
+
     override val RawMessage.Builder.messageBody: Any get() = body
+
+    class Builder<T : AutoCloseable>(
+        configuration: CommonFileReaderConfiguration,
+        directoryChecker: DirectoryChecker,
+        contentParser: ContentParser<T, RawMessage.Builder>,
+        fileTracker: MovedFileTracker,
+        readerState: ReaderState = InMemoryReaderState(),
+        messageIdSupplier: (StreamId) -> MessageId.Builder,
+        sourceFactory: (StreamId, Path) -> FileSourceWrapper<T>
+    ) : DefaultFileReader.Builder<T, RawMessage.Builder, MessageId.Builder>(
+        configuration,
+        directoryChecker,
+        contentParser,
+        fileTracker,
+        readerState,
+        messageIdSupplier,
+        sourceFactory
+    ) {
+        override fun build(): AbstractFileReader<T, RawMessage.Builder, MessageId.Builder> {
+            return TransportDefaultFileReader(
+                configuration,
+                directoryChecker,
+                contentParser,
+                readerState,
+                DelegateReaderListener(onStreamData, onError),
+                delegateHolder,
+                sourceFactory,
+                ReaderHelper(
+                    messageIdSupplier,
+                    messageFilters,
+                    sequenceGenerator,
+                ),
+            ).apply {
+                init(fileTracker)
+            }
+        }
+    }
 }
