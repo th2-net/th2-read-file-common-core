@@ -17,7 +17,8 @@
 
 package com.exactpro.th2.read.file.common.impl
 
-import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
+import com.exactpro.th2.common.grpc.RawMessage as ProtoRawMessage
 import com.exactpro.th2.read.file.common.ContentParser
 import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.recovery.RecoverableException
@@ -64,13 +65,21 @@ abstract class LineParser<MESSAGE_BUILDER> @JvmOverloads constructor(
         listOf(lineToBuilder(readLine))
 
     private fun lineToBuilder(readLine: String): MESSAGE_BUILDER = lineToBuilder(readLine, Charsets.UTF_8)
-    protected abstract fun lineToBuilder(readLine: String, charset: Charset = Charsets.UTF_8): MESSAGE_BUILDER
+    protected abstract fun lineToBuilder(readLine: String, charset: Charset): MESSAGE_BUILDER
 }
 
 open class ProtoLineParser @JvmOverloads constructor(
     filter: BiPredicate<StreamId, String> = BiPredicate { _, _ -> true },
     transformer: Function<String, String> = Function { it }
+) : LineParser<ProtoRawMessage.Builder>(filter, transformer) {
+    override fun lineToBuilder(readLine: String, charset: Charset): ProtoRawMessage.Builder =
+        ProtoRawMessage.newBuilder().setBody(ByteString.copyFrom(readLine.toByteArray(charset)))
+}
+
+open class TransportLineParser @JvmOverloads constructor(
+    filter: BiPredicate<StreamId, String> = BiPredicate { _, _ -> true },
+    transformer: Function<String, String> = Function { it }
 ) : LineParser<RawMessage.Builder>(filter, transformer) {
     override fun lineToBuilder(readLine: String, charset: Charset): RawMessage.Builder =
-        RawMessage.newBuilder().setBody(ByteString.copyFrom(readLine.toByteArray(charset)))
+        RawMessage.builder().setBody(readLine.toByteArray(charset))
 }
