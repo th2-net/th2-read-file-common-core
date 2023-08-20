@@ -1,193 +1,47 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
 buildscript {
-    ext {
-        koltin_version = '1.6.21'
+    repositories {
+        gradlePluginPortal()
+        maven {
+            url = "https://s01.oss.sonatype.org/content/repositories/snapshots/"
+        }
+    }
+    dependencies {
+        classpath "com.exactpro.th2:th2-gradle-plugin:0.0.1-dev-5915968839-41381e5-SNAPSHOT"
     }
 }
 
 plugins {
-    id 'java-library'
-    id 'org.jetbrains.kotlin.jvm' version "$koltin_version"
-    id 'maven-publish'
-    id "io.github.gradle-nexus.publish-plugin" version "1.1.0"
-    id 'signing'
-    id 'org.jetbrains.dokka' version "$koltin_version"
-    id "org.owasp.dependencycheck" version "8.1.2"
+    id 'org.jetbrains.dokka' version '1.8.20'
 }
 
-dependencyCheck {
-    formats=['SARIF', 'JSON', 'HTML']
-    failBuildOnCVSS=5
-
-    analyzers {
-        assemblyEnabled = false
-        nugetconfEnabled = false
-        nodeEnabled = false
-    }
-}
-
-group 'com.exactpro.th2'
-version release_version
-
-ext {
-    java_version = JavaVersion.VERSION_11
-}
-
-configurations.configureEach {
-    resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
-    resolutionStrategy.cacheDynamicVersionsFor 0, 'seconds'
-}
-
-java {
-    sourceCompatibility = java_version
-    targetCompatibility = java_version
-    withSourcesJar()
-    withJavadocJar()
-}
+apply plugin: "com.exactpro.th2.common-conventions"
+apply plugin: "com.exactpro.th2.artifacts-conventions"
 
 javadocJar {
     dependsOn(dokkaJavadoc)
     from(dokkaJavadoc.outputDirectory)
 }
 
-tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions {
-        jvmTarget = java_version.toString()
-    }
-}
-
 dependencies {
-    api platform('com.exactpro.th2:bom:4.4.0-update-libs-5345334944-c71fdc9-SNAPSHOT')
-    implementation "com.exactpro.th2:common:5.3.0-separate-executor-5391854885-afab720-SNAPSHOT"
-    implementation "com.exactpro.th2:common-utils:2.1.0-transport-protocol-5347774882-e4aa8e6-SNAPSHOT"
-    api "com.exactpro.th2:grpc-common:4.2.0-dev"
+    api platform('com.exactpro.th2:bom:4.5.0')
+    implementation "com.exactpro.th2:common:5.4.0-dev"
+    implementation "com.exactpro.th2:common-utils:2.2.0-dev"
+    api "com.exactpro.th2:grpc-common:4.3.0-dev"
 
     implementation "com.google.guava:guava"
     implementation "org.apache.commons:commons-lang3"
-    implementation "io.github.microutils:kotlin-logging:3.0.0"
-
-    implementation "org.slf4j:slf4j-api"
 
     implementation('io.prometheus:simpleclient') {
         because('performance metric for grafana')
     }
 
-    testImplementation "org.apache.logging.log4j:log4j-slf4j2-impl"
-    testImplementation "org.apache.logging.log4j:log4j-core"
-    testImplementation "org.junit.jupiter:junit-jupiter:5.9.3"
-    testImplementation "io.strikt:strikt-jvm:0.34.1"
-    testImplementation "org.mockito.kotlin:mockito-kotlin:5.0.0"
-
-    dokkaJavadocPlugin "org.jetbrains.dokka:kotlin-as-java-plugin:$koltin_version"
+    dokkaJavadocPlugin "org.jetbrains.dokka:kotlin-as-java-plugin"
 }
 
 test {
-    useJUnitPlatform()
     testLogging {
         showStandardStreams = true
     }
-}
-
-jar {
-    manifest {
-        attributes(
-                'Created-By':               "${System.getProperty('java.version')} (${System.getProperty('java.vendor')})",
-                'Specification-Title':      '',
-                'Specification-Vendor':     'Exactpro Systems LLC',
-                'Implementation-Title':     project.archivesBaseName,
-                'Implementation-Vendor':    'Exactpro Systems LLC',
-                'Implementation-Vendor-Id': 'com.exactpro',
-                'Implementation-Version':   project.version
-        )
-    }
-}
-
-// conditionals for publications
-tasks.withType(PublishToMavenRepository).configureEach {
-    onlyIf {
-        (repository == publishing.repositories.nexusRepository &&
-                project.hasProperty('nexus_user') &&
-                project.hasProperty('nexus_password') &&
-                project.hasProperty('nexus_url')) ||
-                (repository == publishing.repositories.sonatype &&
-                        project.hasProperty('sonatypeUsername') &&
-                        project.hasProperty('sonatypePassword'))
-    }
-}
-tasks.withType(Sign).configureEach {
-    onlyIf {
-        project.hasProperty('signingKey') &&
-                project.hasProperty('signingPassword')
-    }
-}
-// disable running task 'initializeSonatypeStagingRepository' on a gitlab
-tasks.configureEach {task ->
-    if(task.name == 'initializeSonatypeStagingRepository' &&
-            !(project.hasProperty('sonatypeUsername') && project.hasProperty('sonatypePassword'))
-    ) {
-        task.enabled = false
-    }
-}
-
-publishing {
-    publications {
-        mavenJava(MavenPublication) {
-            from(components.java)
-            pom {
-                name = rootProject.name
-                packaging = 'jar'
-                description = rootProject.description
-                url = vcs_url
-                scm {
-                    url = vcs_url
-                }
-                licenses {
-                    license {
-                        name = 'The Apache License, Version 2.0'
-                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
-                    }
-                }
-                developers {
-                    developer {
-                        id = 'developer'
-                        name = 'developer'
-                        email = 'developer@exactpro.com'
-                    }
-                }
-                scm {
-                    url = vcs_url
-                }
-            }
-        }
-    }
-    repositories {
-        //Nexus repo to publish from gitlab
-        maven {
-            name = 'nexusRepository'
-            credentials {
-                username = project.findProperty('nexus_user')
-                password = project.findProperty('nexus_password')
-            }
-            url = project.findProperty('nexus_url')
-        }
-    }
-}
-
-nexusPublishing {
-    repositories {
-        sonatype {
-            nexusUrl.set(uri("https://s01.oss.sonatype.org/service/local/"))
-            snapshotRepositoryUrl.set(uri("https://s01.oss.sonatype.org/content/repositories/snapshots/"))
-        }
-    }
-}
-
-signing {
-    def signingKey = findProperty("signingKey")
-    def signingPassword = findProperty("signingPassword")
-    useInMemoryPgpKeys(signingKey, signingPassword)
-    sign publishing.publications.mavenJava
 }
 
 dependencyLocking {
