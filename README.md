@@ -1,4 +1,4 @@
-# Read file common core for common (2.1.0)
+# Read file common core for common (3.0.0)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 
@@ -170,7 +170,7 @@ The file will be dropped if its last modification time is less than **lastTimest
 
 ## Changes
 
-### 2.1.0
+### 3.0.0
 
 **Incompatible changes. Code migration is required**
 

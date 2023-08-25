@@ -725,7 +725,7 @@ abstract class AbstractFileReader<T : AutoCloseable, MESSAGE_BUILDER, ID_BUILDER
             || (if (configuration.disableFileMovementTracking) fileHolder.path != path else !fileTracker.isSameFiles(fileHolder.path, path))
     }
 
-    public class FileHolder<T : AutoCloseable>(
+    protected class FileHolder<T : AutoCloseable>(
         val path: Path,
         private val sourceSupplier: (Path) -> FileSourceWrapper<T>
     ) : AutoCloseable {

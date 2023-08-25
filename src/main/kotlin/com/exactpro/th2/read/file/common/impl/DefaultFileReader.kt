@@ -52,7 +52,6 @@ abstract class DefaultFileReader<T : AutoCloseable, MESSAGE_BUILDER, ID_BUILDER>
     contentParser: ContentParser<T, MESSAGE_BUILDER>,
     readerState: ReaderState,
     readerListener: ReaderListener<MESSAGE_BUILDER>,
-    private val delegateHolder: DelegateHolder<T, MESSAGE_BUILDER>,
     private val sourceFactory: (StreamId, Path) -> FileSourceWrapper<T>,
     helper: FileReaderHelper<MESSAGE_BUILDER, ID_BUILDER>,
 ) : AbstractFileReader<T, MESSAGE_BUILDER, ID_BUILDER>(
@@ -63,6 +62,8 @@ abstract class DefaultFileReader<T : AutoCloseable, MESSAGE_BUILDER, ID_BUILDER>
     readerListener,
     helper,
 ) {
+    private lateinit var delegateHolder: DelegateHolder<T, MESSAGE_BUILDER>
+
     override fun canReadRightNow(holder: FileHolder<T>, staleTimeout: Duration): Boolean = delegateHolder.canRead(holder, staleTimeout)
     override fun acceptFile(streamId: StreamId, currentFile: Path?, newFile: Path): Boolean = delegateHolder.acceptFile(streamId, currentFile, newFile)
     override fun createSource(streamId: StreamId, path: Path): FileSourceWrapper<T> = sourceFactory(streamId, path)
@@ -83,7 +84,7 @@ abstract class DefaultFileReader<T : AutoCloseable, MESSAGE_BUILDER, ID_BUILDER>
         delegateHolder.onSourceClosed.invoke(streamId, path)
     }
 
-    data class DelegateHolder<T : AutoCloseable, MESSAGE_BUILDER>(
+    private data class DelegateHolder<T : AutoCloseable, MESSAGE_BUILDER>(
         val canRead: (FileHolder<T>, Duration) -> Boolean = READ_AFTER_STALE_TIMEOUT,
         val acceptFile: (StreamId, Path?, Path) -> Boolean = { _, _, _ -> true },
         val onSourceFound: (StreamId, Path) -> Unit = { _, _ -> },
@@ -96,12 +97,12 @@ abstract class DefaultFileReader<T : AutoCloseable, MESSAGE_BUILDER, ID_BUILDER>
         protected val configuration: CommonFileReaderConfiguration,
         protected val directoryChecker: DirectoryChecker,
         protected val contentParser: ContentParser<T, MESSAGE_BUILDER>,
-        protected val fileTracker: MovedFileTracker,
+        private val fileTracker: MovedFileTracker,
         protected val readerState: ReaderState = InMemoryReaderState(),
         protected val messageIdSupplier: (StreamId) -> MESSAGE_ID,
         protected val sourceFactory: (StreamId, Path) -> FileSourceWrapper<T>
     ) {
-        protected var delegateHolder = DelegateHolder<T, MESSAGE_BUILDER>()
+        private var delegateHolder = DelegateHolder<T, MESSAGE_BUILDER>()
         protected var onStreamData: (StreamId, List<MESSAGE_BUILDER>) -> Unit = { _, _ -> }
         protected var onError: (StreamId?, String, Exception) -> Unit = { _, _, _ -> }
         protected var sequenceGenerator: (StreamId) -> Long = DEFAULT_SEQUENCE_GENERATOR
@@ -168,7 +169,14 @@ abstract class DefaultFileReader<T : AutoCloseable, MESSAGE_BUILDER, ID_BUILDER>
             messageFilters.addAll(filters)
         }
 
-        abstract fun build(): AbstractFileReader<T, MESSAGE_BUILDER, MESSAGE_ID>
+        fun build(): AbstractFileReader<T, MESSAGE_BUILDER, MESSAGE_ID> {
+            val instance = createInstance()
+            instance.delegateHolder = this.delegateHolder
+            instance.init(fileTracker)
+            return instance
+        }
+
+        protected abstract fun createInstance(): DefaultFileReader<T, MESSAGE_BUILDER, MESSAGE_ID>
     }
 
     companion object {
@@ -190,7 +198,6 @@ class ProtoDefaultFileReader<T : AutoCloseable> private constructor(
     contentParser: ContentParser<T, ProtoRawMessage.Builder>,
     readerState: ReaderState,
     readerListener: ReaderListener<ProtoRawMessage.Builder>,
-    delegateHolder: DelegateHolder<T, ProtoRawMessage.Builder>,
     sourceFactory: (StreamId, Path) -> FileSourceWrapper<T>,
     helper: FileReaderHelper<ProtoRawMessage.Builder, ProtoMessageID>,
 ) : DefaultFileReader<T, ProtoRawMessage.Builder, ProtoMessageID>(
@@ -199,7 +206,6 @@ class ProtoDefaultFileReader<T : AutoCloseable> private constructor(
     contentParser,
     readerState,
     readerListener,
-    delegateHolder,
     sourceFactory,
     helper
 ) {
@@ -259,23 +265,20 @@ class ProtoDefaultFileReader<T : AutoCloseable> private constructor(
         messageIdSupplier,
         sourceFactory
     ) {
-        override fun build(): AbstractFileReader<T, ProtoRawMessage.Builder, ProtoMessageID> {
+        override fun createInstance(): DefaultFileReader<T, ProtoRawMessage.Builder, ProtoMessageID> {
             return ProtoDefaultFileReader(
                 configuration,
                 directoryChecker,
                 contentParser,
                 readerState,
                 DelegateReaderListener(onStreamData, onError),
-                delegateHolder,
                 sourceFactory,
                 ReaderHelper(
                     messageIdSupplier,
                     messageFilters,
                     sequenceGenerator,
-                ),
-            ).apply {
-                init(fileTracker)
-            }
+                )
+            )
         }
     }
 }
@@ -286,7 +289,6 @@ class TransportDefaultFileReader<T : AutoCloseable> private constructor(
     contentParser: ContentParser<T, RawMessage.Builder>,
     readerState: ReaderState,
     readerListener: ReaderListener<RawMessage.Builder>,
-    delegateHolder: DelegateHolder<T, RawMessage.Builder>,
     sourceFactory: (StreamId, Path) -> FileSourceWrapper<T>,
     helper: FileReaderHelper<RawMessage.Builder, MessageId.Builder>,
 ) : DefaultFileReader<T, RawMessage.Builder, MessageId.Builder>(
@@ -295,7 +297,6 @@ class TransportDefaultFileReader<T : AutoCloseable> private constructor(
     contentParser,
     readerState,
     readerListener,
-    delegateHolder,
     sourceFactory,
     helper
 ) {
@@ -368,23 +369,20 @@ class TransportDefaultFileReader<T : AutoCloseable> private constructor(
         messageIdSupplier,
         sourceFactory
     ) {
-        override fun build(): AbstractFileReader<T, RawMessage.Builder, MessageId.Builder> {
+        override fun createInstance(): DefaultFileReader<T, RawMessage.Builder, MessageId.Builder> {
             return TransportDefaultFileReader(
                 configuration,
                 directoryChecker,
                 contentParser,
                 readerState,
                 DelegateReaderListener(onStreamData, onError),
-                delegateHolder,
                 sourceFactory,
                 ReaderHelper(
                     messageIdSupplier,
                     messageFilters,
                     sequenceGenerator,
-                ),
-            ).apply {
-                init(fileTracker)
-            }
+                )
+            )
         }
     }
 }
