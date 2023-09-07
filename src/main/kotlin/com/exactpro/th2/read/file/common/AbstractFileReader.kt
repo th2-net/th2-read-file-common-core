@@ -22,6 +22,7 @@ import com.exactpro.th2.read.file.common.metric.FilesMetric
 import com.exactpro.th2.read.file.common.metric.ReaderMetric
 import com.exactpro.th2.read.file.common.recovery.RecoverableException
 import com.exactpro.th2.read.file.common.recovery.RecoverableFileSourceWrapper
+import com.exactpro.th2.read.file.common.state.Content
 import com.exactpro.th2.read.file.common.state.ReaderState
 import com.exactpro.th2.read.file.common.state.StreamData
 import mu.KotlinLogging
@@ -563,7 +564,7 @@ abstract class AbstractFileReader<T : AutoCloseable, MESSAGE_BUILDER, ID_BUILDER
             lastTime = currentTimestamp
             lastSequence = curSequence
         }
-        readerState[streamId] = StreamData(lastTime, lastSequence, content.last().messageBody)
+        readerState[streamId] = StreamData(lastTime, lastSequence, content.last().content)
     }
 
     private fun MESSAGE_BUILDER.checkTimeAndSequence(
@@ -893,7 +894,7 @@ abstract class AbstractFileReader<T : AutoCloseable, MESSAGE_BUILDER, ID_BUILDER
     protected abstract var MESSAGE_BUILDER.messageTimestamp: Instant
     protected abstract val MESSAGE_BUILDER.sequence: Long
     protected abstract val MESSAGE_BUILDER.directionIsNoteSet: Boolean
-    protected abstract val MESSAGE_BUILDER.messageBody: Any
+    protected abstract val MESSAGE_BUILDER.content: Content
 
     companion object {
         private val LOGGER = KotlinLogging.logger { }

@@ -18,6 +18,8 @@
 package com.exactpro.th2.read.file.common.state
 
 import com.exactpro.th2.read.file.common.StreamId
+import com.google.protobuf.ByteString
+import io.netty.buffer.ByteBuf
 import java.nio.file.Path
 import java.time.Instant
 
@@ -34,6 +36,22 @@ interface ReaderState {
     operator fun set(streamId: StreamId, data: StreamData)
 }
 
+sealed interface Content {
+    fun isEqualTo(otherContent: Content): Boolean
+}
+
+class ProtoContent(
+    private val content: ByteString
+) : Content {
+    override fun isEqualTo(otherContent: Content): Boolean = otherContent is ProtoContent && content == otherContent.content
+}
+
+class TransportContent(
+    private val content: ByteBuf
+) : Content {
+    override fun isEqualTo(otherContent: Content): Boolean = otherContent is TransportContent && content == otherContent.content
+}
+
 data class StreamData(
     /**
      * Last timestamp used by the [StreamId]
@@ -48,5 +66,5 @@ data class StreamData(
     /**
      * The content of the last message in [StreamId]
      */
-    val lastContent: Any,
+    val lastContent: Content
 )

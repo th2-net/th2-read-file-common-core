@@ -22,6 +22,7 @@ import com.exactpro.th2.common.utils.toInstant
 import com.exactpro.th2.read.file.common.FilterFileInfo
 import com.exactpro.th2.read.file.common.ReadMessageFilter
 import com.exactpro.th2.read.file.common.StreamId
+import com.exactpro.th2.read.file.common.state.ProtoContent
 import com.exactpro.th2.read.file.common.state.StreamData
 import java.time.Duration
 
@@ -39,7 +40,7 @@ object OldTimestampMessageFilter : ReadMessageFilter<RawMessage.Builder> {
         }
         val messageTimestamp = message.metadata.id.timestamp.toInstant()
         return streamData.lastTimestamp > messageTimestamp
-            || (streamData.lastTimestamp == messageTimestamp && streamData.lastContent == message.body)
+            || (streamData.lastTimestamp == messageTimestamp && streamData.lastContent.isEqualTo(ProtoContent(message.body)))
     }
 
     override fun drop(

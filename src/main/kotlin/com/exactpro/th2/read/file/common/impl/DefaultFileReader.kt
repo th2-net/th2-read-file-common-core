@@ -35,8 +35,11 @@ import com.exactpro.th2.read.file.common.ReaderListener
 import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.extensions.attributes
+import com.exactpro.th2.read.file.common.state.Content
+import com.exactpro.th2.read.file.common.state.ProtoContent
 import com.exactpro.th2.read.file.common.state.ReaderState
 import com.exactpro.th2.read.file.common.state.StreamData
+import com.exactpro.th2.read.file.common.state.TransportContent
 import com.exactpro.th2.read.file.common.state.impl.InMemoryReaderState
 import com.google.protobuf.TextFormat.shortDebugString
 import java.nio.file.Files
@@ -246,7 +249,7 @@ class ProtoDefaultFileReader<T : AutoCloseable> private constructor(
 
     override val ProtoRawMessage.Builder.sequence: Long get() = metadata.id.sequence
     override val ProtoRawMessage.Builder.directionIsNoteSet: Boolean get() = metadataBuilder.idBuilder.direction == ProtoDirection.UNRECOGNIZED
-    override val ProtoRawMessage.Builder.messageBody: Any get() = body
+    override val ProtoRawMessage.Builder.content: Content get() = ProtoContent(body)
 
     class Builder<T : AutoCloseable>(
         configuration: CommonFileReaderConfiguration,
@@ -350,7 +353,7 @@ class TransportDefaultFileReader<T : AutoCloseable> private constructor(
             false
         }
 
-    override val RawMessage.Builder.messageBody: Any get() = body
+    override val RawMessage.Builder.content: Content get() = TransportContent(body)
 
     class Builder<T : AutoCloseable>(
         configuration: CommonFileReaderConfiguration,

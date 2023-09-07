@@ -53,7 +53,7 @@ internal class TestLineParser : AbstractFileTest() {
     private val staleTimeout = Duration.ofSeconds(1)
     private val filter: BiPredicate<StreamId, String> = mock { onGeneric { test(any(), any()) }.thenReturn(true) }
     private val transformer: Function<String, String> = mock { onGeneric { apply(any()) }.thenAnswer { it.getArgument(0, String::class.java) } }
-    private val parser = ProtoLineParser(filter, transformer)
+    private val parser = LineParser(filter, transformer, LineParser.PROTO)
 
     @Test
     internal fun `can parse file with more that one line`() {

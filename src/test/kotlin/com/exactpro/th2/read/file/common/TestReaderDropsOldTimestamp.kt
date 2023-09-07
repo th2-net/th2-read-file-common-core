@@ -21,7 +21,8 @@ import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.impl.OldTimestampMessageFilter
-import com.exactpro.th2.read.file.common.impl.ProtoLineParser
+import com.exactpro.th2.read.file.common.impl.LineParser
+import com.exactpro.th2.read.file.common.state.ProtoContent
 import com.exactpro.th2.read.file.common.state.StreamData
 import com.google.protobuf.ByteString
 import org.junit.jupiter.api.Test
@@ -91,7 +92,7 @@ internal class TestReaderDropsOldTimestamp : AbstractReaderTest() {
         createFile(dir, "A-1").apply {
             append("$creationTime", lfInEnd = true)
         }
-        readerState[StreamId("A")] = StreamData(creationTime.minusMillis(1), -1, ByteString.EMPTY)
+        readerState[StreamId("A")] = StreamData(creationTime.minusMillis(1), -1, ProtoContent(ByteString.EMPTY))
 
         assertTimeoutPreemptively(Duration.ofSeconds(1)) {
             reader.processUpdates()
@@ -107,7 +108,7 @@ internal class TestReaderDropsOldTimestamp : AbstractReaderTest() {
     }
 
     override fun createParser(): ContentParser<BufferedReader, RawMessage.Builder> {
-        return object : ProtoLineParser() {
+        return object : LineParser<RawMessage.Builder>(lineToBuilder = PROTO) {
             override fun parse(streamId: StreamId, source: BufferedReader): Collection<RawMessage.Builder> {
                 return super.parse(streamId, source).onEach {
                     val data = it.body.toStringUtf8()

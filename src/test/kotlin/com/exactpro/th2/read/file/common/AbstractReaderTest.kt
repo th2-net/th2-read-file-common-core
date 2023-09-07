@@ -22,7 +22,7 @@ import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.impl.BufferedReaderSourceWrapper
 import com.exactpro.th2.read.file.common.impl.ProtoDefaultFileReader
-import com.exactpro.th2.read.file.common.impl.ProtoLineParser
+import com.exactpro.th2.read.file.common.impl.LineParser
 import com.exactpro.th2.read.file.common.state.ReaderState
 import com.exactpro.th2.read.file.common.state.impl.InMemoryReaderState
 import org.junit.jupiter.api.AfterEach
@@ -79,7 +79,7 @@ abstract class AbstractReaderTest : AbstractFileTest() {
             .build()
     }
 
-    protected open fun createParser(): ContentParser<BufferedReader, RawMessage.Builder> = ProtoLineParser()
+    protected open fun createParser(): ContentParser<BufferedReader, RawMessage.Builder> = LineParser(lineToBuilder = LineParser.PROTO)
 
     protected open fun createSource(id: StreamId, path: Path): FileSourceWrapper<BufferedReader> =
         BufferedReaderSourceWrapper(Files.newBufferedReader(path))

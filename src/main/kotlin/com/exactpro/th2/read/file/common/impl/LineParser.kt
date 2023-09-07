@@ -29,9 +29,10 @@ import java.nio.charset.MalformedInputException
 import java.util.function.BiPredicate
 import java.util.function.Function
 
-abstract class LineParser<MESSAGE_BUILDER> @JvmOverloads constructor(
+open class LineParser<MESSAGE_BUILDER> @JvmOverloads constructor(
     private val filter: BiPredicate<StreamId, String> = BiPredicate { _, _ -> true },
-    private val transformer: Function<String, String> = Function { it }
+    private val transformer: Function<String, String> = Function { it },
+    private val lineToBuilder: (String, Charset) -> MESSAGE_BUILDER
 ) : ContentParser<BufferedReader, MESSAGE_BUILDER> {
 
     override fun canParse(streamId: StreamId, source: BufferedReader, considerNoFutureUpdates: Boolean): Boolean {
@@ -62,24 +63,15 @@ abstract class LineParser<MESSAGE_BUILDER> @JvmOverloads constructor(
     }
 
     protected open fun lineToMessages(streamId: StreamId, readLine: String): List<MESSAGE_BUILDER> =
-        listOf(lineToBuilder(readLine))
+        listOf(lineToBuilder(readLine, Charsets.UTF_8))
 
-    private fun lineToBuilder(readLine: String): MESSAGE_BUILDER = lineToBuilder(readLine, Charsets.UTF_8)
-    protected abstract fun lineToBuilder(readLine: String, charset: Charset): MESSAGE_BUILDER
-}
-
-open class ProtoLineParser @JvmOverloads constructor(
-    filter: BiPredicate<StreamId, String> = BiPredicate { _, _ -> true },
-    transformer: Function<String, String> = Function { it }
-) : LineParser<ProtoRawMessage.Builder>(filter, transformer) {
-    override fun lineToBuilder(readLine: String, charset: Charset): ProtoRawMessage.Builder =
-        ProtoRawMessage.newBuilder().setBody(ByteString.copyFrom(readLine.toByteArray(charset)))
-}
-
-open class TransportLineParser @JvmOverloads constructor(
-    filter: BiPredicate<StreamId, String> = BiPredicate { _, _ -> true },
-    transformer: Function<String, String> = Function { it }
-) : LineParser<RawMessage.Builder>(filter, transformer) {
-    override fun lineToBuilder(readLine: String, charset: Charset): RawMessage.Builder =
-        RawMessage.builder().setBody(readLine.toByteArray(charset))
+    companion object {
+        @JvmField
+        val PROTO: (String, Charset) -> ProtoRawMessage.Builder = { readLine, charset ->
+            ProtoRawMessage.newBuilder().setBody(ByteString.copyFrom(readLine.toByteArray(charset)))
+        }
+        val TRANSPORT: (String, Charset) -> RawMessage.Builder = { readLine, charset ->
+            RawMessage.builder().setBody(readLine.toByteArray(charset))
+        }
+    }
 }

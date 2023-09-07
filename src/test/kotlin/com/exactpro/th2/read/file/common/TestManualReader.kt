@@ -21,7 +21,7 @@ import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.impl.ProtoDefaultFileReader
-import com.exactpro.th2.read.file.common.impl.ProtoLineParser
+import com.exactpro.th2.read.file.common.impl.LineParser
 import com.exactpro.th2.read.file.common.impl.RecoverableBufferedReaderWrapper
 import com.google.protobuf.TextFormat.shortDebugString
 import mu.KotlinLogging
@@ -85,7 +85,7 @@ class TestManualReader : AbstractFileTest() {
         reader = ProtoDefaultFileReader.Builder(
             configuration,
             checker,
-            ProtoLineParser(),
+            LineParser(lineToBuilder = LineParser.PROTO),
             movedFileTracker,
             messageIdSupplier = { MessageID.getDefaultInstance() },
         ) { _, path -> RecoverableBufferedReaderWrapper(LineNumberReader(Files.newBufferedReader(path))) }

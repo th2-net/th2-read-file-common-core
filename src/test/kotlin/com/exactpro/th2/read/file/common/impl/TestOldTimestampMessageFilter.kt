@@ -21,6 +21,7 @@ import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.read.file.common.FilterFileInfo
 import com.exactpro.th2.read.file.common.StreamId
+import com.exactpro.th2.read.file.common.state.ProtoContent
 import com.exactpro.th2.read.file.common.state.StreamData
 import com.google.protobuf.ByteString
 import org.junit.jupiter.api.Nested
@@ -149,5 +150,5 @@ internal class TestOldTimestampMessageFilter {
         private fun createFileInfo(timestamp: Instant): FilterFileInfo = FilterFileInfo(Path.of("test"), timestamp, Duration.ofSeconds(1))
     }
 
-    private fun createStreamData(timestamp: Instant, content: ByteString = ByteString.EMPTY) = StreamData(timestamp, -1, content)
+    private fun createStreamData(timestamp: Instant, content: ByteString = ByteString.EMPTY) = StreamData(timestamp, -1, ProtoContent(content))
 }

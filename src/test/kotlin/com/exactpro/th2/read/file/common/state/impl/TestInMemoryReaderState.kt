@@ -18,6 +18,7 @@
 package com.exactpro.th2.read.file.common.state.impl
 
 import com.exactpro.th2.read.file.common.StreamId
+import com.exactpro.th2.read.file.common.state.ProtoContent
 import com.exactpro.th2.read.file.common.state.StreamData
 import com.google.protobuf.ByteString
 import org.junit.jupiter.api.Test
@@ -88,7 +89,7 @@ internal class TestInMemoryReaderState {
     @Test
     fun `stores stream data`() {
         val streamId = StreamId("test")
-        val data = StreamData(Instant.now(), 42, ByteString.copyFromUtf8("A"))
+        val data = StreamData(Instant.now(), 42, ProtoContent(ByteString.copyFromUtf8("A")))
 
         expect {
             that(state[streamId]).isNull()
