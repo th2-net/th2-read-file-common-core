@@ -17,7 +17,8 @@
 
 package com.exactpro.th2.read.file.common.impl
 
-import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
+import com.exactpro.th2.common.grpc.RawMessage as ProtoRawMessage
 import com.exactpro.th2.read.file.common.ContentParser
 import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.recovery.RecoverableException
@@ -28,10 +29,11 @@ import java.nio.charset.MalformedInputException
 import java.util.function.BiPredicate
 import java.util.function.Function
 
-open class LineParser @JvmOverloads constructor(
+open class LineParser<MESSAGE_BUILDER> @JvmOverloads constructor(
     private val filter: BiPredicate<StreamId, String> = BiPredicate { _, _ -> true },
-    private val transformer: Function<String, String> = Function { it }
-) : ContentParser<BufferedReader> {
+    private val transformer: Function<String, String> = Function { it },
+    private val lineToBuilder: (String, Charset) -> MESSAGE_BUILDER
+) : ContentParser<BufferedReader, MESSAGE_BUILDER> {
 
     override fun canParse(streamId: StreamId, source: BufferedReader, considerNoFutureUpdates: Boolean): Boolean {
         val nextLine: String? = readNextPossibleLine(source, considerNoFutureUpdates)
@@ -41,7 +43,7 @@ open class LineParser @JvmOverloads constructor(
         return nextLine != null && considerNoFutureUpdates
     }
 
-    override fun parse(streamId: StreamId, source: BufferedReader): Collection<RawMessage.Builder> {
+    override fun parse(streamId: StreamId, source: BufferedReader): Collection<MESSAGE_BUILDER> {
         val readLine = source.readLine()
         return if (readLine == null || !filter.test(streamId, readLine)) {
             emptyList()
@@ -60,10 +62,17 @@ open class LineParser @JvmOverloads constructor(
         throw RecoverableException(ex)
     }
 
-    protected open fun lineToMessages(streamId: StreamId, readLine: String): List<RawMessage.Builder> =
-        listOf(lineToBuilder(readLine))
+    protected open fun lineToMessages(streamId: StreamId, readLine: String): List<MESSAGE_BUILDER> =
+        listOf(lineToBuilder(readLine, Charsets.UTF_8))
 
-    @JvmOverloads
-    protected fun lineToBuilder(readLine: String, charset: Charset = Charsets.UTF_8): RawMessage.Builder =
-        RawMessage.newBuilder().setBody(ByteString.copyFrom(readLine.toByteArray(charset)))
+    companion object {
+        @JvmField
+        val PROTO: (String, Charset) -> ProtoRawMessage.Builder = { readLine, charset ->
+            ProtoRawMessage.newBuilder().setBody(ByteString.copyFrom(readLine.toByteArray(charset)))
+        }
+        @JvmField
+        val TRANSPORT: (String, Charset) -> RawMessage.Builder = { readLine, charset ->
+            RawMessage.builder().setBody(readLine.toByteArray(charset))
+        }
+    }
 }

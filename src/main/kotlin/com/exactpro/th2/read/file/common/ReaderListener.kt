@@ -17,9 +17,7 @@
 
 package com.exactpro.th2.read.file.common
 
-import com.exactpro.th2.common.grpc.RawMessage
-
-interface ReaderListener {
-    fun onStreamData(streamId: StreamId, messages: List<RawMessage.Builder>)
+interface ReaderListener<T> {
+    fun onStreamData(streamId: StreamId, messages: List<T>)
     fun onError(streamId: StreamId?, message: String, cause: Exception)
 }

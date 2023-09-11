@@ -17,10 +17,8 @@
 
 package com.exactpro.th2.read.file.common
 
-import com.exactpro.th2.common.grpc.MessageID
-
-interface FileReaderHelper {
-    val messageFilters: Collection<ReadMessageFilter>
+interface FileReaderHelper<MESSAGE_BUILDER, ID_BUILDER> {
+    val messageFilters: Collection<ReadMessageFilter<MESSAGE_BUILDER>>
     fun generateSequence(streamId: StreamId): Long
-    fun createMessageId(streamId: StreamId): MessageID
+    fun createMessageId(streamId: StreamId): ID_BUILDER
 }

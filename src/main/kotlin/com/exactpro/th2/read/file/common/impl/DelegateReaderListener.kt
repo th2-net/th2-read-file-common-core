@@ -17,15 +17,14 @@
 
 package com.exactpro.th2.read.file.common.impl
 
-import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.ReaderListener
 import com.exactpro.th2.read.file.common.StreamId
 
-class DelegateReaderListener(
-    private val onStreamDataDelegate: (StreamId, List<RawMessage.Builder>) -> Unit = { _, _ -> },
+class DelegateReaderListener<MESSAGE_BUILDER>(
+    private val onStreamDataDelegate: (StreamId, List<MESSAGE_BUILDER>) -> Unit = { _, _ -> },
     private val onErrorDelegate: (StreamId?, String, Exception) -> Unit = { _, _, _ -> },
-) : ReaderListener {
-    override fun onStreamData(streamId: StreamId, messages: List<RawMessage.Builder>) {
+) : ReaderListener<MESSAGE_BUILDER> {
+    override fun onStreamData(streamId: StreamId, messages: List<MESSAGE_BUILDER>) {
         onStreamDataDelegate(streamId, messages)
     }
 

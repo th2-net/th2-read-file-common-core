@@ -17,21 +17,22 @@
 
 package com.exactpro.th2.read.file.common.impl
 
-import com.exactpro.th2.common.grpc.RawMessageOrBuilder
+import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.utils.toInstant
 import com.exactpro.th2.read.file.common.FilterFileInfo
 import com.exactpro.th2.read.file.common.ReadMessageFilter
 import com.exactpro.th2.read.file.common.StreamId
-import com.exactpro.th2.read.file.common.extensions.toInstant
+import com.exactpro.th2.read.file.common.state.ProtoContent
 import com.exactpro.th2.read.file.common.state.StreamData
 import java.time.Duration
 
 /**
  * Filters messages that have timestamp less than the last timestamp from [StreamData]
  */
-object OldTimestampMessageFilter : ReadMessageFilter {
+object OldTimestampMessageFilter : ReadMessageFilter<RawMessage.Builder> {
     override fun drop(
         streamId: StreamId,
-        message: RawMessageOrBuilder,
+        message: RawMessage.Builder,
         streamData: StreamData?
     ): Boolean {
         if (streamData == null || !message.metadata.id.hasTimestamp()) {
@@ -39,7 +40,7 @@ object OldTimestampMessageFilter : ReadMessageFilter {
         }
         val messageTimestamp = message.metadata.id.timestamp.toInstant()
         return streamData.lastTimestamp > messageTimestamp
-            || (streamData.lastTimestamp == messageTimestamp && streamData.lastContent == message.body)
+            || (streamData.lastTimestamp == messageTimestamp && streamData.lastContent.isEqualTo(ProtoContent(message.body)))
     }
 
     override fun drop(
