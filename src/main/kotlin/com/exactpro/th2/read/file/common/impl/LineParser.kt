@@ -70,6 +70,7 @@ open class LineParser<MESSAGE_BUILDER> @JvmOverloads constructor(
         val PROTO: (String, Charset) -> ProtoRawMessage.Builder = { readLine, charset ->
             ProtoRawMessage.newBuilder().setBody(ByteString.copyFrom(readLine.toByteArray(charset)))
         }
+        @JvmField
         val TRANSPORT: (String, Charset) -> RawMessage.Builder = { readLine, charset ->
             RawMessage.builder().setBody(readLine.toByteArray(charset))
         }
