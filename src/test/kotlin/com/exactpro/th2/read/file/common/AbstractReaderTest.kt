@@ -17,12 +17,11 @@
 
 package com.exactpro.th2.read.file.common
 
-import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.impl.BufferedReaderSourceWrapper
-import com.exactpro.th2.read.file.common.impl.DefaultFileReader
+import com.exactpro.th2.read.file.common.impl.ProtoDefaultFileReader
 import com.exactpro.th2.read.file.common.impl.LineParser
 import com.exactpro.th2.read.file.common.state.ReaderState
 import com.exactpro.th2.read.file.common.state.impl.InMemoryReaderState
@@ -40,10 +39,10 @@ abstract class AbstractReaderTest : AbstractFileTest() {
     @TempDir
     lateinit var dir: Path
     protected val defaultStaleTimeout: Duration = Duration.ofSeconds(1)
-    protected lateinit var parser: ContentParser<BufferedReader>
+    protected lateinit var parser: ContentParser<BufferedReader, RawMessage.Builder>
     protected val onStreamData: (StreamId, List<RawMessage.Builder>) -> Unit = mock { }
     protected val onSourceClosed: (StreamId, Path) -> Unit = mock { }
-    protected lateinit var reader: AbstractFileReader<BufferedReader>
+    protected lateinit var reader: AbstractFileReader<BufferedReader, RawMessage.Builder, MessageID>
     protected lateinit var configuration: CommonFileReaderConfiguration
     protected lateinit var readerState: ReaderState
     private lateinit var directoryChecker: DirectoryChecker
@@ -63,7 +62,7 @@ abstract class AbstractReaderTest : AbstractFileTest() {
 
         val movedFileTracker = MovedFileTracker(dir)
         readerState = spy(InMemoryReaderState())
-        reader = DefaultFileReader.Builder(
+        reader = ProtoDefaultFileReader.Builder(
             configuration,
             directoryChecker,
             parser,
@@ -80,7 +79,7 @@ abstract class AbstractReaderTest : AbstractFileTest() {
             .build()
     }
 
-    protected open fun createParser(): ContentParser<BufferedReader> = LineParser()
+    protected open fun createParser(): ContentParser<BufferedReader, RawMessage.Builder> = LineParser(lineToBuilder = LineParser.PROTO)
 
     protected open fun createSource(id: StreamId, path: Path): FileSourceWrapper<BufferedReader> =
         BufferedReaderSourceWrapper(Files.newBufferedReader(path))
@@ -93,7 +92,7 @@ abstract class AbstractReaderTest : AbstractFileTest() {
 
     abstract fun createConfiguration(defaultStaleTimeout: Duration): CommonFileReaderConfiguration
 
-    protected open val messageFilters: Collection<ReadMessageFilter> = emptyList()
+    protected open val messageFilters: Collection<ReadMessageFilter<RawMessage.Builder>> = emptyList()
 
     @AfterEach
     internal fun tearDown() {

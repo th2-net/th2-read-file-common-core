@@ -17,10 +17,10 @@
 
 package com.exactpro.th2.read.file.common
 
-import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
-import com.exactpro.th2.read.file.common.impl.DefaultFileReader
+import com.exactpro.th2.read.file.common.impl.ProtoDefaultFileReader
 import com.exactpro.th2.read.file.common.impl.LineParser
 import com.exactpro.th2.read.file.common.impl.RecoverableBufferedReaderWrapper
 import com.google.protobuf.TextFormat.shortDebugString
@@ -66,7 +66,7 @@ class TestManualReader : AbstractFileTest() {
         filter
     )
 
-    private lateinit var reader: AbstractFileReader<LineNumberReader>
+    private lateinit var reader: AbstractFileReader<LineNumberReader, RawMessage.Builder, MessageID>
     private lateinit var executor: ScheduledExecutorService
     private lateinit var future: Future<*>
 
@@ -82,10 +82,10 @@ class TestManualReader : AbstractFileTest() {
         Files.createDirectory(dir)
 
         val movedFileTracker = MovedFileTracker(dir)
-        reader = DefaultFileReader.Builder(
+        reader = ProtoDefaultFileReader.Builder(
             configuration,
             checker,
-            LineParser(),
+            LineParser(lineToBuilder = LineParser.PROTO),
             movedFileTracker,
             messageIdSupplier = { MessageID.getDefaultInstance() },
         ) { _, path -> RecoverableBufferedReaderWrapper(LineNumberReader(Files.newBufferedReader(path))) }

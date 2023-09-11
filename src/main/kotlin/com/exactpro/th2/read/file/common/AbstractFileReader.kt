@@ -17,22 +17,14 @@
 
 package com.exactpro.th2.read.file.common
 
-import com.exactpro.th2.common.grpc.Direction
-import com.exactpro.th2.common.grpc.RawMessage
-import com.exactpro.th2.common.grpc.RawMessageMetadata
-import com.exactpro.th2.common.grpc.RawMessageMetadataOrBuilder
-import com.exactpro.th2.common.grpc.RawMessageOrBuilder
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
-import com.exactpro.th2.read.file.common.extensions.toInstant
-import com.exactpro.th2.read.file.common.extensions.toTimestamp
 import com.exactpro.th2.read.file.common.metric.FilesMetric
 import com.exactpro.th2.read.file.common.metric.ReaderMetric
 import com.exactpro.th2.read.file.common.recovery.RecoverableException
 import com.exactpro.th2.read.file.common.recovery.RecoverableFileSourceWrapper
+import com.exactpro.th2.read.file.common.state.Content
 import com.exactpro.th2.read.file.common.state.ReaderState
 import com.exactpro.th2.read.file.common.state.StreamData
-import com.google.protobuf.TextFormat.shortDebugString
-import com.google.protobuf.Timestamp
 import mu.KotlinLogging
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
@@ -46,20 +38,20 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
-abstract class AbstractFileReader<T : AutoCloseable>(
+abstract class AbstractFileReader<T : AutoCloseable, MESSAGE_BUILDER, ID_BUILDER>(
     private val configuration: CommonFileReaderConfiguration,
     private val directoryChecker: DirectoryChecker,
-    private val contentParser: ContentParser<T>,
+    private val contentParser: ContentParser<T, MESSAGE_BUILDER>,
     private val readerState: ReaderState,
-    private val readerListener: ReaderListener,
-    private val helper: FileReaderHelper,
+    private val readerListener: ReaderListener<MESSAGE_BUILDER>,
+    protected val helper: FileReaderHelper<MESSAGE_BUILDER, ID_BUILDER>,
 ) : AutoCloseable {
 
     @Volatile
     private var closed: Boolean = false
 
     private val currentFilesByStreamId: MutableMap<StreamId, FileHolder<T>> = ConcurrentHashMap()
-    private val contentByStreamId: MutableMap<StreamId, PublicationHolder> = ConcurrentHashMap()
+    private val contentByStreamId: MutableMap<StreamId, PublicationHolder<MESSAGE_BUILDER>> = ConcurrentHashMap()
     private val pendingStreams: MutableSet<StreamId> = ConcurrentHashMap.newKeySet()
     @Volatile
     private var cachedUpdates: Map<StreamId, Path> = emptyMap()
@@ -94,7 +86,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
     }
 
-    private class PublicationHolder {
+    private class PublicationHolder<MESSAGE_BUILDER> {
         private var _startOfPublishing: Long? = null
         private var _batchesPublished: Int = 0
         private var _creationTime: Instant = Instant.now()
@@ -132,7 +124,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         /**
          * Do not forget to copy the content before passing it to anywhere
          */
-        val content: MutableList<RawMessage.Builder> = arrayListOf()
+        val content: MutableList<MESSAGE_BUILDER> = arrayListOf()
 
         fun resetCurrent() {
             _creationTime = Instant.now()
@@ -217,7 +209,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             return false
         }
 
-        val readContent: Collection<RawMessage.Builder> = try {
+        val readContent: Collection<MESSAGE_BUILDER> = try {
             readMessages(streamId, fileHolder)
         } catch (ex: Exception) {
             LOGGER.error(ex) { "Error during reading messages for $streamId. File holder: $fileHolder" }
@@ -242,7 +234,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
 
         finalContent.also { originalContent ->
-            val filteredContent: Collection<RawMessage.Builder> = originalContent.filterReadContent(streamId, streamData)
+            val filteredContent: Collection<MESSAGE_BUILDER> = originalContent.filterReadContent(streamId, streamData)
             if (filteredContent.isEmpty()) {
                 LOGGER.trace { "No content messages left for $streamId after filtering" }
                 return@also
@@ -256,7 +248,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
             } catch (ex: Exception) {
                 LOGGER.error(ex) {
                     "Failed to validate content for stream $streamId ($fileHolder):" +
-                        " ${filteredContent.joinToString { shortDebugString(it) }}"
+                        " ${filteredContent.joinToString { messageBuilderShortDebugString(it) }}"
                 }
                 failStreamId(streamId, fileHolder, ex)
                 return true
@@ -281,7 +273,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         return false
     }
 
-    private fun Collection<RawMessage.Builder>.markMessagesWithTag(fileHolder: FileHolder<T>) {
+    private fun Collection<MESSAGE_BUILDER>.markMessagesWithTag(fileHolder: FileHolder<T>) {
         val lastState = fileHolder.readState
         fileHolder.updateState()
 
@@ -293,10 +285,10 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
     }
 
-    private fun Collection<RawMessage.Builder>.filterReadContent(
+    private fun Collection<MESSAGE_BUILDER>.filterReadContent(
         streamId: StreamId,
         streamData: StreamData?,
-    ): Collection<RawMessage.Builder> = filter { msg ->
+    ): Collection<MESSAGE_BUILDER> = filter { msg ->
         val filter = helper.messageFilters.find { it.drop(streamId, msg, streamData) }
         if (filter != null) {
             LOGGER.debug { "Content '${msg.toShortString()}' in $streamId stream was filtered by ${filter::class.java.simpleName} filter. Stream data: $streamData" }
@@ -304,10 +296,11 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         filter == null
     }
 
-    private fun RawMessage.Builder.markFirst(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_FIRST)
-    private fun RawMessage.Builder.markLast(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_LAST)
-    private fun RawMessage.Builder.markSingle(): RawMessageMetadata.Builder = metadataBuilder.putProperties(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_SINGLE)
+    private fun MESSAGE_BUILDER.markFirst() = putMetadataProperty(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_FIRST)
+    private fun MESSAGE_BUILDER.markLast() = putMetadataProperty(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_LAST)
+    private fun MESSAGE_BUILDER.markSingle() = putMetadataProperty(MESSAGE_STATUS_PROPERTY, MESSAGE_STATUS_SINGLE)
 
+    protected abstract fun MESSAGE_BUILDER.putMetadataProperty(key: String, value: String)
 
     override fun close() {
         if (closed) {
@@ -362,14 +355,14 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     }
 
     /**
-     * Will be invoke on each read content.
-     * Can be used to modify the [RawMessage.Builder] before publishing them
+     * Will be invoked on each read content.
+     * Can be used to modify the [MESSAGE_BUILDER] before publishing them
      */
     protected open fun onContentRead(
         streamId: StreamId,
         path: Path,
-        readContent: Collection<RawMessage.Builder>,
-    ): Collection<RawMessage.Builder> {
+        readContent: Collection<MESSAGE_BUILDER>,
+    ): Collection<MESSAGE_BUILDER> {
         return readContent
     }
 
@@ -400,27 +393,11 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     protected abstract fun createSource(streamId: StreamId, path: Path): FileSourceWrapper<T>
 
-    private fun setCommonInformation(
+    protected abstract fun setCommonInformation(
         streamId: StreamId,
-        readContent: Collection<RawMessage.Builder>,
+        readContent: Collection<MESSAGE_BUILDER>,
         streamData: StreamData?
-    ) {
-        var sequence: Long = streamData?.run { lastSequence + 1 } ?: helper.generateSequence(streamId)
-        readContent.forEach {
-            it.metadataBuilder.apply {
-                idBuilder.apply {
-                    // set default parameters
-                    mergeFrom(helper.createMessageId(streamId))
-
-                    if (!hasTimestamp()) {
-                        timestamp = Instant.now().toTimestamp()
-                    }
-                    connectionIdBuilder.sessionAlias = streamId.sessionAlias
-                    setSequence(sequence++)
-                }
-            }
-        }
-    }
+    )
 
     protected fun noChangesForStaleTimeout(fileHolder: FileHolder<T>): Boolean = !fileHolder.changed &&
         abs(System.currentTimeMillis() - fileHolder.lastModificationTime.toMillis()) > configuration.staleTimeout.toMillis()
@@ -438,7 +415,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     private fun tryPublishContent(
         streamId: StreamId,
-        readContent: Collection<RawMessage.Builder>
+        readContent: Collection<MESSAGE_BUILDER>
     ) {
         val publicationHolder = contentByStreamId.computeIfAbsent(streamId) { PublicationHolder() }
         with(publicationHolder) {
@@ -447,7 +424,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
     }
 
-    private fun PublicationHolder.tryToPublish(
+    private fun PublicationHolder<MESSAGE_BUILDER>.tryToPublish(
         streamId: StreamId,
         addToBatch: Int = 0
     ) {
@@ -464,7 +441,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
     }
 
-    private fun PublicationHolder.publish(streamId: StreamId) {
+    private fun PublicationHolder<MESSAGE_BUILDER>.publish(streamId: StreamId) {
         readerListener.onStreamData(streamId, content.toList())
         published()
         resetCurrent()
@@ -529,11 +506,11 @@ abstract class AbstractFileReader<T : AutoCloseable>(
     private fun readMessages(
         streamId: StreamId,
         holder: FileHolder<T>
-    ): Collection<RawMessage.Builder> {
+    ): Collection<MESSAGE_BUILDER> {
         if (!holder.sourceWrapper.hasMoreData) {
             return emptyList()
         }
-        var content: Collection<RawMessage.Builder> = emptyList()
+        var content: Collection<MESSAGE_BUILDER> = emptyList()
 
         with(holder.sourceWrapper) {
             do {
@@ -566,7 +543,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     private fun validateContent(
         streamId: StreamId,
-        content: Collection<RawMessage.Builder>,
+        content: Collection<MESSAGE_BUILDER>,
         streamData: StreamData?
     ) {
         var lastTime: Instant
@@ -580,39 +557,39 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
 
         content.forEach {
-            if (it.metadataBuilder.idBuilder.direction == Direction.UNRECOGNIZED) {
+            if (it.directionIsNoteSet) {
                 error("the direction was not set for message in stream $streamId")
             }
             val (currentTimestamp, curSequence) = it.checkTimeAndSequence(streamId, lastTime, lastSequence)
             lastTime = currentTimestamp
             lastSequence = curSequence
         }
-        readerState[streamId] = StreamData(lastTime, lastSequence, content.last().body)
+        readerState[streamId] = StreamData(lastTime, lastSequence, content.last().content)
     }
 
-    private fun RawMessage.Builder.checkTimeAndSequence(
+    private fun MESSAGE_BUILDER.checkTimeAndSequence(
         streamId: StreamId,
         lastTime: Instant,
         lastSequence: Long
     ): Pair<Instant, Long> {
-        val currentTimestamp = metadata.id.timestamp.toInstant()
+        val currentTimestamp = messageTimestamp
         if (currentTimestamp < lastTime) {
-            fixOrAlert(streamId, metadataBuilder, lastTime)
+            fixOrAlert(streamId, this, lastTime)
         }
-        val curSequence = metadata.id.sequence
+        val curSequence = sequence
         check(curSequence > lastSequence) {
             "The sequence does not increase monotonically. Last seq: $lastSequence; current seq: $curSequence"
         }
         return Pair(currentTimestamp, curSequence)
     }
 
-    private fun fixOrAlert(streamId: StreamId, metadata: RawMessageMetadata.Builder, lastTime: Instant) {
+    private fun fixOrAlert(streamId: StreamId, messageBuilder: MESSAGE_BUILDER, lastTime: Instant) {
         if (configuration.fixTimestamp) {
-            LOGGER.debug { "Fixing timestamp for $streamId. Current: ${metadata.id.timestamp.toInstant()}; after fix: $lastTime" }
-            metadata.idBuilder.timestamp = lastTime.toTimestamp()
+            LOGGER.debug { "Fixing timestamp for $streamId. Current: ${messageBuilder.messageTimestamp}; after fix: $lastTime" }
+            messageBuilder.messageTimestamp = lastTime
         } else {
             throw IllegalStateException("The time does not increase monotonically. " +
-                "Last timestamp: $lastTime; current timestamp: ${metadata.id.timestamp.toInstant()}")
+                "Last timestamp: $lastTime; current timestamp: ${messageBuilder.messageTimestamp}")
         }
     }
 
@@ -707,7 +684,7 @@ abstract class AbstractFileReader<T : AutoCloseable>(
 
     private fun isPublicationLimitExceeded(
         streamId: StreamId,
-        publicationHolder: PublicationHolder,
+        publicationHolder: PublicationHolder<MESSAGE_BUILDER>,
         limit: Int
     ): Boolean {
         if (publicationHolder.isTimeToReset()) {
@@ -912,6 +889,13 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         }
     }
 
+    protected abstract fun messageBuilderShortDebugString(builder: MESSAGE_BUILDER): String
+    protected abstract fun MESSAGE_BUILDER.toShortString(): String
+    protected abstract var MESSAGE_BUILDER.messageTimestamp: Instant
+    protected abstract val MESSAGE_BUILDER.sequence: Long
+    protected abstract val MESSAGE_BUILDER.directionIsNoteSet: Boolean
+    protected abstract val MESSAGE_BUILDER.content: Content
+
     companion object {
         private val LOGGER = KotlinLogging.logger { }
 
@@ -928,10 +912,3 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         const val UNLIMITED_PUBLICATION = -1
     }
 }
-
-private fun RawMessageOrBuilder.toShortString(): String {
-    return "timestamp: ${metadata.timestampOrNull?.toInstant()}; size: ${body.size()}"
-}
-
-private val RawMessageMetadataOrBuilder.timestampOrNull: Timestamp?
-    get() = id.run { if (hasTimestamp()) timestamp else null }

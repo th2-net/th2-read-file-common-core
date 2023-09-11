@@ -18,9 +18,9 @@
 package com.exactpro.th2.read.file.common
 
 import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_STATUS_PROPERTY
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
-import com.exactpro.th2.read.file.common.extensions.toTimestamp
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
 import org.mockito.kotlin.any
@@ -30,7 +30,7 @@ import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.never
 import org.mockito.kotlin.timeout
 import org.mockito.kotlin.verify
-import org.mockito.kotlin.verifyZeroInteractions
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import strikt.api.expectThat
 import strikt.assertions.all
@@ -143,7 +143,7 @@ internal class TestAbstractFileReaderSustained : AbstractReaderTest() {
             reader.processUpdates()
         }
 
-        verifyZeroInteractions(onStreamData)
+        verifyNoInteractions(onStreamData)
 
         // Wait enough time to trigger publication
         Thread.sleep(configuration.maxPublicationDelay.toMillis())
@@ -228,7 +228,7 @@ internal class TestAbstractFileReaderSustained : AbstractReaderTest() {
             reader.processUpdates()
         }
 
-        verifyZeroInteractions(parser, onStreamData)
+        verifyNoInteractions(parser, onStreamData)
     }
 
     override fun createConfiguration(defaultStaleTimeout: Duration): CommonFileReaderConfiguration {

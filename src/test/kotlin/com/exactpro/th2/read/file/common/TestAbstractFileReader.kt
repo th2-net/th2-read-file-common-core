@@ -29,7 +29,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.clearInvocations
 import org.mockito.kotlin.verify
-import org.mockito.kotlin.verifyZeroInteractions
+import org.mockito.kotlin.verifyNoInteractions
 import strikt.api.expectThat
 import strikt.assertions.all
 import strikt.assertions.get
@@ -137,7 +137,7 @@ internal class TestAbstractFileReader : AbstractReaderTest() {
             reader.processUpdates()
         }
 
-        verifyZeroInteractions(onStreamData)
+        verifyNoInteractions(onStreamData)
     }
 
     override fun createConfiguration(defaultStaleTimeout: Duration): CommonFileReaderConfiguration {

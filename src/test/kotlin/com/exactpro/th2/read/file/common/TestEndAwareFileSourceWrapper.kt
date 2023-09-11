@@ -50,7 +50,7 @@ class TestEndAwareFileSourceWrapper : AbstractReaderTest() {
         return EndAwareBufferedReaderSource(EndAwareBufferedReader(path))
     }
 
-    override fun createParser(): ContentParser<BufferedReader> = EndAwareLineParser()
+    override fun createParser(): ContentParser<BufferedReader, RawMessage.Builder> = EndAwareLineParser()
 
     @Test
     fun `closes source before stale timeout expired`() {
@@ -85,8 +85,9 @@ class TestEndAwareFileSourceWrapper : AbstractReaderTest() {
             }
     }
 
-    private class EndAwareLineParser : LineParser(
-        filter = { _, line -> line != END_MARKER }
+    private class EndAwareLineParser : LineParser<RawMessage.Builder>(
+        filter = { _, line -> line != END_MARKER },
+        lineToBuilder = PROTO
     ) {
         override fun canParse(streamId: StreamId, source: BufferedReader, considerNoFutureUpdates: Boolean): Boolean {
             val nextLine: String? = readNextPossibleLine(source, considerNoFutureUpdates)
