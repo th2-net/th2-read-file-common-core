@@ -15,10 +15,13 @@
  *
  */
 
-package com.exactpro.th2.read.file.common
+package com.exactpro.th2.read.file.common.proto
 
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.utils.message.toTimestamp
+import com.exactpro.th2.read.file.common.ContentParser
+import com.exactpro.th2.read.file.common.ReadMessageFilter
+import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.impl.OldTimestampMessageFilter
 import com.exactpro.th2.read.file.common.impl.LineParser

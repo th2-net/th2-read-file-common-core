@@ -15,7 +15,7 @@
  *
  */
 
-package com.exactpro.th2.read.file.common
+package com.exactpro.th2.read.file.common.proto
 
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.utils.message.toTimestamp

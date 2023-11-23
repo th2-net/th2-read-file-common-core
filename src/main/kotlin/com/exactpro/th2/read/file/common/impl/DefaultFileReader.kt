@@ -17,13 +17,11 @@
 
 package com.exactpro.th2.read.file.common.impl
 
-import com.exactpro.th2.common.grpc.Direction as ProtoDirection
-import com.exactpro.th2.common.grpc.MessageID as ProtoMessageID
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.Direction
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.MessageId
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
 import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.common.utils.toInstant
-import com.exactpro.th2.common.grpc.RawMessage as ProtoRawMessage
 import com.exactpro.th2.read.file.common.AbstractFileReader
 import com.exactpro.th2.read.file.common.ContentParser
 import com.exactpro.th2.read.file.common.DirectoryChecker
@@ -42,12 +40,15 @@ import com.exactpro.th2.read.file.common.state.StreamData
 import com.exactpro.th2.read.file.common.state.TransportContent
 import com.exactpro.th2.read.file.common.state.impl.InMemoryReaderState
 import com.google.protobuf.TextFormat.shortDebugString
+import org.apache.commons.lang3.builder.ToStringBuilder
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
-import org.apache.commons.lang3.builder.ToStringBuilder
 import kotlin.math.abs
+import com.exactpro.th2.common.grpc.Direction as ProtoDirection
+import com.exactpro.th2.common.grpc.MessageID as ProtoMessageID
+import com.exactpro.th2.common.grpc.RawMessage as ProtoRawMessage
 
 abstract class DefaultFileReader<T : AutoCloseable, MESSAGE_BUILDER, ID_BUILDER> protected constructor(
     configuration: CommonFileReaderConfiguration,
@@ -310,20 +311,19 @@ class TransportDefaultFileReader<T : AutoCloseable> private constructor(
     override fun setCommonInformation(streamId: StreamId, readContent: Collection<RawMessage.Builder>, streamData: StreamData?) {
         var sequence: Long = streamData?.run { lastSequence + 1 } ?: helper.generateSequence(streamId)
         readContent.forEach {
-            val messageIdBuilder = helper.createMessageId(streamId)
+            val prototype = helper.createMessageId(streamId)
 
-            messageIdBuilder
-                .setSessionAlias(streamId.sessionAlias)
-                .setSequence(sequence++)
-
-            try {
-                messageIdBuilder.timestamp
-            } catch (e: IllegalStateException) { // TODO: refactor - remove exception catch
-                messageIdBuilder.setTimestamp(Instant.now())
+            it.idBuilder().apply {
+                // set default parameters
+                if (prototype.isDirectionSet()) { setDirection(prototype.direction) }
+                if (prototype.isTimestampSet()) { setTimestamp(prototype.timestamp) }
+                // set default if empty parameter
+                if (!isDirectionSet()) { setDirection(Direction.INCOMING) }
+                if (!isTimestampSet()) { setTimestamp(Instant.now()) }
+                // set actual values
+                setSessionAlias(streamId.sessionAlias)
+                setSequence(sequence++)
             }
-
-            // set default parameters
-            it.setId(messageIdBuilder.build())
         }
     }
 
@@ -346,12 +346,7 @@ class TransportDefaultFileReader<T : AutoCloseable> private constructor(
     override val RawMessage.Builder.sequence: Long get() = this.idBuilder().sequence
 
     override val RawMessage.Builder.directionIsNoteSet: Boolean
-        get() = try {
-            this.idBuilder().direction
-            true
-        } catch (e: IllegalStateException) {
-            false
-        }
+        get() = !this.idBuilder().isDirectionSet()
 
     override val RawMessage.Builder.content: Content get() = TransportContent(body)
 
