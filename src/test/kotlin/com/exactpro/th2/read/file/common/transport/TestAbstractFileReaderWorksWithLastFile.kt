@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,9 @@
  *
  */
 
-package com.exactpro.th2.read.file.common
+package com.exactpro.th2.read.file.common.transport
 
-import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
@@ -66,7 +66,7 @@ internal class TestAbstractFileReaderWorksWithLastFile : AbstractReaderTest() {
         expectThat(firstCaptor.allValues.flatten())
             .hasSize(3)
             .allIndexed {
-                get { body.toStringUtf8() } isEqualTo "test${it + 1}"
+                get { body.toString(Charsets.UTF_8) } isEqualTo "test${it + 1}"
             }
     }
 
@@ -95,7 +95,7 @@ internal class TestAbstractFileReaderWorksWithLastFile : AbstractReaderTest() {
         expectThat(firstCaptor.allValues.flatten())
             .hasSize(3)
             .allIndexed {
-                get { body.toStringUtf8() } isEqualTo "test${it + 1}"
+                get { body.toString(Charsets.UTF_8) } isEqualTo "test${it + 1}"
             }
     }
 }

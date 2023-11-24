@@ -17,7 +17,6 @@
 
 package com.exactpro.th2.read.file.common
 
-import com.exactpro.th2.common.grpc.Direction
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import strikt.api.expectThat
@@ -26,11 +25,7 @@ import strikt.assertions.hasSize
 import strikt.assertions.isEmpty
 import strikt.assertions.isNotEmpty
 import java.io.IOException
-import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.attribute.BasicFileAttributeView
-import java.nio.file.attribute.FileTime
-import java.util.Comparator
 
 internal class TestDirectoryChecker : AbstractFileTest() {
 

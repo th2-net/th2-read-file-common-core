@@ -1,4 +1,4 @@
-# Read file common core for common (3.0.0)
+# Read file common core for common (3.1.0)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 
@@ -22,21 +22,24 @@ NOTE: **the data should be appended to exactly the same file**.
 The base class for reader is `com.exactpro.th2.read.file.common.AbstractFileReader`.
 If you want to implement the reader with your custom logic you need to extend this class.
 
-However, there is a `com.exactpro.th2.read.file.common.impl.DefaultFileReader` class
+However, there is a `com.exactpro.th2.read.file.common.impl.TransportDefaultFileReader` class
 that provides you the ability to configure it with lambda expressions.
 If you don't need to store the state or use complex custom logic - this is your chose.
 
 ```kotlin
- val reader: AbstractFileReader<BufferedReader> = DefaultFileReader.Builder(
+ val reader: AbstractFileReader<BufferedReader, RawMessage.Builder, MessageId.Builder> = TransportDefaultFileReader.Builder(
             configuration,
             directoryChecker,
-            parser,
-            movedFileTracker,
+            contentParser,
+            fileTracker,
+            readerState,
+            messageIdSupplier,
         ) { _, path -> BufferedReaderSourceWrapper(Files.newBufferedReader(path)) }
             .readFileImmediately()
             .onStreamData(onStreamData)
-            .onError(onErrorAction)
+            .onSourceClosed(onSourceClosed)
             .acceptNewerFiles()
+            .setMessageFilters(messageFilters)
             .build()
 ```
 
@@ -169,6 +172,16 @@ The message will be dropped if the current state for StreamId contains **lastTim
 The file will be dropped if its last modification time is less than **lastTimestamp** for current StreamID + **staleTimeout**.
 
 ## Changes
+
+### 3.1.0
+
+#### Fixed:
+The next problems when transport mode is enabled 
+* IllegalStateException: Cannot set id after calling idBuilder()
+* IllegalStateException: Missing required properties: direction
+
+#### Updated:
+* common: `5.7.1-dev`
 
 ### 3.0.0
 

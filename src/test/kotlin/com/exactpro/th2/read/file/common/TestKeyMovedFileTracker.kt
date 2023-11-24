@@ -18,7 +18,6 @@
 package com.exactpro.th2.read.file.common
 
 import java.nio.file.Path
-import kotlin.io.path.ExperimentalPathApi
 
 internal class TestKeyMovedFileTracker : TestAbstractMovedFileTracker() {
 

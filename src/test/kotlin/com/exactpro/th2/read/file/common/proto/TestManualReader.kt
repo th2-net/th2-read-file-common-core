@@ -15,10 +15,15 @@
  *
  */
 
-package com.exactpro.th2.read.file.common
+package com.exactpro.th2.read.file.common.proto
 
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.read.file.common.AbstractFileReader
+import com.exactpro.th2.read.file.common.AbstractFileTest
+import com.exactpro.th2.read.file.common.DirectoryChecker
+import com.exactpro.th2.read.file.common.MovedFileTracker
+import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import com.exactpro.th2.read.file.common.impl.ProtoDefaultFileReader
 import com.exactpro.th2.read.file.common.impl.LineParser
