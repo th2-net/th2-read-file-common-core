@@ -1,4 +1,4 @@
-# Read file common core for common (3.1.0)
+# Read file common core for common (3.2.0)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 
@@ -142,6 +142,8 @@ until some messages will be actually sent.
 
  **NOTE**: If option `leaveLastFileOpen` is turned on means no flags will be generated because in this case the last message read from the file cannot be determinate
 
+Each message includes `th2.read.file_name` property with source file name.
+
 #### Metrics
 
 The common-read-core exports the following metrics:
@@ -172,6 +174,10 @@ The message will be dropped if the current state for StreamId contains **lastTim
 The file will be dropped if its last modification time is less than **lastTimestamp** for current StreamID + **staleTimeout**.
 
 ## Changes
+
+### 3.2.0
+
++ Adds new property `th2.read.file_name` to each message.
 
 ### 3.1.0
 

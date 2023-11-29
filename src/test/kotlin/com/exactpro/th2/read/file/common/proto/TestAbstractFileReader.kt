@@ -18,6 +18,7 @@
 package com.exactpro.th2.read.file.common.proto
 
 import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.FILE_NAME_PROPERTY
 import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_STATUS_FIRST
 import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_STATUS_LAST
 import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_STATUS_PROPERTY
@@ -104,26 +105,32 @@ internal class TestAbstractFileReader : AbstractReaderTest() {
                 get(0).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 1")
                     get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_FIRST)
+                    get { metadata }.get { propertiesMap }.get { get(FILE_NAME_PROPERTY) }.isEqualTo("A-0")
                 }
                 get(1).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 2")
                     get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isNull()
+                    get { metadata }.get { propertiesMap }.get { get(FILE_NAME_PROPERTY) }.isEqualTo("A-0")
                 }
                 get(2).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 3")
                     get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_LAST)
+                    get { metadata }.get { propertiesMap }.get { get(FILE_NAME_PROPERTY) }.isEqualTo("A-0")
                 }
                 get(3).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line")
                     get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_SINGLE)
+                    get { metadata }.get { propertiesMap }.get { get(FILE_NAME_PROPERTY) }.isEqualTo("A-1")
                 }
                 get(4).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 4")
                     get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_FIRST)
+                    get { metadata }.get { propertiesMap }.get { get(FILE_NAME_PROPERTY) }.isEqualTo("A-2")
                 }
                 get(5).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 5")
                     get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_LAST)
+                    get { metadata }.get { propertiesMap }.get { get(FILE_NAME_PROPERTY) }.isEqualTo("A-2")
                 }
 
                 all { get { metadata }.get { id }.get { connectionId }.get { sessionAlias }.isEqualTo("A") }

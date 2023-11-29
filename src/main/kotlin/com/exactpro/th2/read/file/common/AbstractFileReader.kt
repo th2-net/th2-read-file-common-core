@@ -242,7 +242,7 @@ abstract class AbstractFileReader<T : AutoCloseable, MESSAGE_BUILDER, ID_BUILDER
             if (!configuration.leaveLastFileOpen) {
                 filteredContent.markMessagesWithTag(fileHolder)
             }
-            setCommonInformation(streamId, filteredContent, streamData)
+            setCommonInformation(fileHolder, streamId, filteredContent, streamData)
             try {
                 validateContent(streamId, filteredContent, streamData)
             } catch (ex: Exception) {
@@ -394,6 +394,7 @@ abstract class AbstractFileReader<T : AutoCloseable, MESSAGE_BUILDER, ID_BUILDER
     protected abstract fun createSource(streamId: StreamId, path: Path): FileSourceWrapper<T>
 
     protected abstract fun setCommonInformation(
+        fileHolder: FileHolder<T>,
         streamId: StreamId,
         readContent: Collection<MESSAGE_BUILDER>,
         streamData: StreamData?
@@ -900,6 +901,7 @@ abstract class AbstractFileReader<T : AutoCloseable, MESSAGE_BUILDER, ID_BUILDER
         private val LOGGER = KotlinLogging.logger { }
 
         const val MESSAGE_STATUS_PROPERTY = "th2.read.order_marker"
+        const val FILE_NAME_PROPERTY = "th2.read.file_name"
         const val MESSAGE_STATUS_SINGLE = "single"
         const val MESSAGE_STATUS_FIRST = "start"
         const val MESSAGE_STATUS_LAST = "fin"

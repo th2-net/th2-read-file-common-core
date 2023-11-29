@@ -45,6 +45,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
+import kotlin.io.path.name
 import kotlin.math.abs
 import com.exactpro.th2.common.grpc.Direction as ProtoDirection
 import com.exactpro.th2.common.grpc.MessageID as ProtoMessageID
@@ -217,7 +218,12 @@ class ProtoDefaultFileReader<T : AutoCloseable> private constructor(
         metadataBuilder.putProperties(key, value)
     }
 
-    override fun setCommonInformation(streamId: StreamId, readContent: Collection<ProtoRawMessage.Builder>, streamData: StreamData?) {
+    override fun setCommonInformation(
+        fileHolder: FileHolder<T>,
+        streamId: StreamId,
+        readContent: Collection<ProtoRawMessage.Builder>,
+        streamData: StreamData?
+    ) {
         var sequence: Long = streamData?.run { lastSequence + 1 } ?: helper.generateSequence(streamId)
         readContent.forEach {
             it.metadataBuilder.apply {
@@ -230,6 +236,7 @@ class ProtoDefaultFileReader<T : AutoCloseable> private constructor(
                     connectionIdBuilder.sessionAlias = streamId.sessionAlias
                     setSequence(sequence++)
                 }
+                putProperties(FILE_NAME_PROPERTY, fileHolder.path.name)
             }
         }
     }
@@ -308,12 +315,17 @@ class TransportDefaultFileReader<T : AutoCloseable> private constructor(
         metadataBuilder().put(key, value)
     }
 
-    override fun setCommonInformation(streamId: StreamId, readContent: Collection<RawMessage.Builder>, streamData: StreamData?) {
+    override fun setCommonInformation(
+        fileHolder: FileHolder<T>,
+        streamId: StreamId,
+        readContent: Collection<RawMessage.Builder>,
+        streamData: StreamData?
+    ) {
         var sequence: Long = streamData?.run { lastSequence + 1 } ?: helper.generateSequence(streamId)
-        readContent.forEach {
+        readContent.forEach { builder ->
             val prototype = helper.createMessageId(streamId)
 
-            it.idBuilder().apply {
+            builder.idBuilder().apply {
                 // set default parameters
                 if (prototype.isDirectionSet()) { setDirection(prototype.direction) }
                 if (prototype.isTimestampSet()) { setTimestamp(prototype.timestamp) }
@@ -324,6 +336,7 @@ class TransportDefaultFileReader<T : AutoCloseable> private constructor(
                 setSessionAlias(streamId.sessionAlias)
                 setSequence(sequence++)
             }
+            builder.putMetadataProperty(FILE_NAME_PROPERTY, fileHolder.path.name)
         }
     }
 
