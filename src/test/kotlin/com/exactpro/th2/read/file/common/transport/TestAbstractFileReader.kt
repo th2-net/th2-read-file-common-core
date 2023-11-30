@@ -18,11 +18,13 @@
 package com.exactpro.th2.read.file.common.transport
 
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
+import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.FILE_NAME_PROPERTY
 import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_STATUS_FIRST
 import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_STATUS_LAST
-import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_STATUS_PROPERTY
 import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_STATUS_SINGLE
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
+import com.exactpro.th2.read.file.common.proto.AbstractReaderTest.Companion.FILE_NAME_PROPERTY_TEST
+import com.exactpro.th2.read.file.common.proto.AbstractReaderTest.Companion.MESSAGE_STATUS_PROPERTY_TEST
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
 import org.mockito.kotlin.any
@@ -60,14 +62,17 @@ internal class TestAbstractFileReader : AbstractReaderTest() {
             .apply {
                 get(0).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 1")
-                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_FIRST)
+                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isEqualTo(MESSAGE_STATUS_FIRST)
                 }
                 get(1).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 2")
-                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_LAST)
+                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isEqualTo(MESSAGE_STATUS_LAST)
                 }
 
-                all { get { idBuilder() }.get { sessionAlias }.isEqualTo("A") }
+                all {
+                    get { idBuilder() }.get { sessionAlias }.isEqualTo("A")
+                    get { metadataBuilder() }.get { get(FILE_NAME_PROPERTY_TEST) }.isEqualTo("A-0")
+                }
             }
     }
 
@@ -103,27 +108,33 @@ internal class TestAbstractFileReader : AbstractReaderTest() {
             .apply {
                 get(0).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 1")
-                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_FIRST)
+                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isEqualTo(MESSAGE_STATUS_FIRST)
+                    get { metadataBuilder() }.get { get(FILE_NAME_PROPERTY) }.isEqualTo("A-0")
                 }
                 get(1).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 2")
-                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY) }.isNull()
+                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isNull()
+                    get { metadataBuilder() }.get { get(FILE_NAME_PROPERTY) }.isEqualTo("A-0")
                 }
                 get(2).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 3")
-                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_LAST)
+                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isEqualTo(MESSAGE_STATUS_LAST)
+                    get { metadataBuilder() }.get { get(FILE_NAME_PROPERTY) }.isEqualTo("A-0")
                 }
                 get(3).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line")
-                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_SINGLE)
+                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isEqualTo(MESSAGE_STATUS_SINGLE)
+                    get { metadataBuilder() }.get { get(FILE_NAME_PROPERTY) }.isEqualTo("A-1")
                 }
                 get(4).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 4")
-                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_FIRST)
+                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isEqualTo(MESSAGE_STATUS_FIRST)
+                    get { metadataBuilder() }.get { get(FILE_NAME_PROPERTY) }.isEqualTo("A-2")
                 }
                 get(5).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 5")
-                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY) }.isEqualTo(MESSAGE_STATUS_LAST)
+                    get { metadataBuilder() }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isEqualTo(MESSAGE_STATUS_LAST)
+                    get { metadataBuilder() }.get { get(FILE_NAME_PROPERTY) }.isEqualTo("A-2")
                 }
 
                 all { get { idBuilder() }.get { sessionAlias }.isEqualTo("A") }

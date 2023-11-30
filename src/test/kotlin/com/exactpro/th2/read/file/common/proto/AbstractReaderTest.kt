@@ -106,4 +106,9 @@ abstract class AbstractReaderTest : AbstractFileTest() {
     internal fun tearDown() {
         reader.close()
     }
+
+    companion object {
+        internal const val MESSAGE_STATUS_PROPERTY_TEST = "th2.read.order_marker"
+        internal const val FILE_NAME_PROPERTY_TEST = "th2.read.file_name"
+    }
 }
