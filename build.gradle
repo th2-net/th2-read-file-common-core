@@ -12,6 +12,7 @@ buildscript {
 
 plugins {
     id 'org.jetbrains.dokka' version '1.8.20'
+    id "com.gorylenko.gradle-git-properties" version "2.4.1"
 }
 
 apply plugin: "com.exactpro.th2.common-conventions"
