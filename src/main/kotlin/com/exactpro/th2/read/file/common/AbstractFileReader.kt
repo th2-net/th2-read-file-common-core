@@ -190,8 +190,16 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 }
                 LOGGER.debug { "Get ${holdersByStreamId.size} holder(s) to process" }
                 for ((streamId, fileHolder) in holdersByStreamId) {
-                    val holderProcessed = ReaderMetric.measureReading { processHolderForStream(streamId, fileHolder) }
-                    updateRequired = updateRequired or holderProcessed
+                    try {
+                        val holderProcessed = ReaderMetric.measureReading { processHolderForStream(streamId, fileHolder) }
+                        updateRequired = updateRequired or holderProcessed
+                    } catch (ex: RecoverableException) {
+                        LOGGER.debug(ex) { "Unhandled recoverable exception for stream $streamId (${fileHolder.path})" }
+                        if (!fileHolder.supportRecovery) {
+                            throw ex
+                        }
+                        fileHolder.recoverSource()
+                    }
                 }
 
                 for ((streamId, holder) in contentByStreamId) {
@@ -547,36 +555,45 @@ abstract class AbstractFileReader<T : AutoCloseable>(
         streamId: StreamId,
         holder: FileHolder<T>
     ): Collection<RawMessage.Builder> {
-        if (!holder.sourceWrapper.hasMoreData) {
-            return emptyList()
-        }
         var content: Collection<RawMessage.Builder> = emptyList()
+        try {
+            if (!holder.sourceWrapper.hasMoreData) {
+                return emptyList()
+            }
 
-        with(holder.sourceWrapper) {
-            do {
-                mark()
-                val canParse: Boolean = try {
-                    contentParser.canParse(streamId, source, noChangesForStaleTimeout(holder)).also {
+            with(holder.sourceWrapper) {
+                do {
+                    mark()
+                    val canParse: Boolean = try {
+                        contentParser.canParse(streamId, source, noChangesForStaleTimeout(holder)).also {
+                            reset()
+                        }
+                    } catch (ex: RecoverableException) {
+                        LOGGER.debug(ex) { "The source for $streamId (${holder.path}) requires to be reopen and recovered" }
+                        if (!holder.supportRecovery) {
+                            LOGGER.error { "Recovery is not supported by the source ${holder.sourceWrapper::class.qualifiedName} for file ${holder.path}" }
+                            throw ex
+                        }
                         reset()
+                        holder.recoverSource()
+                        false
                     }
-                } catch (ex: RecoverableException) {
-                    LOGGER.debug(ex) { "The source for $streamId (${holder.path}) requires to be reopen and recovered" }
-                    if (!holder.supportRecovery) {
-                        LOGGER.error { "Recovery is not supported by the source ${holder.sourceWrapper::class.qualifiedName} for file ${holder.path}" }
-                        throw ex
+                    if (canParse) {
+                        content = contentParser.parse(streamId, source)
+                        if (content.isNotEmpty()) {
+                            LOGGER.trace { "Read ${content.size} message(s) for $streamId from ${holder.path}" }
+                            break
+                        }
                     }
-                    reset()
-                    holder.recoverSource()
-                    false
-                }
-                if (canParse) {
-                    content = contentParser.parse(streamId, source)
-                    if (content.isNotEmpty()) {
-                        LOGGER.trace { "Read ${content.size} message(s) for $streamId from ${holder.path}" }
-                        break
-                    }
-                }
-            } while (canParse && hasMoreData)
+                } while (canParse && hasMoreData)
+            }
+        } catch (ex: RecoverableException) {
+            LOGGER.debug { "The source for $streamId (${holder.path}) thrown a recoverable error. Try to recover" }
+            if (!holder.supportRecovery) {
+                LOGGER.error { "Recovery is not supported by the source ${holder.sourceWrapper::class.qualifiedName} for file ${holder.path}" }
+                throw ex
+            }
+            holder.recoverSource()
         }
         return content
     }
@@ -654,43 +671,50 @@ abstract class AbstractFileReader<T : AutoCloseable>(
                 LOGGER.trace { "No data for $streamId. Wait for the next attempt" }
                 continue
             }
-
-            LOGGER.debug { "Refreshing file info for $streamId ($fileHolder)" }
-            fileHolder.refreshFileInfo()
-            if (fileHolder.truncated) {
-                if (!configuration.allowFileTruncate) {
-                    throw TruncatedSourceException(streamId, fileHolder)
-                }
-                LOGGER.info { "File ${fileHolder.path} was truncated. Start reading from the beginning" }
-                fileHolder.reopen()
-            }
-            LOGGER.debug { "Checking if can read from source for $streamId ($fileHolder)" }
-            if (!canReadRightNow(fileHolder, configuration.staleTimeout)) {
-                if (addToPending(streamId)) {
-                    LOGGER.debug { "Cannot read $fileHolder right now. Wait for the next attempt" }
-                } else {
-                    LOGGER.trace { "Still cannot read ${fileHolder.path} for stream $streamId. Wait for next attempt" }
-                }
-                continue
-            }
-
-            LOGGER.debug { "Checking if ${fileHolder.path} source can be closed for stream $streamId" }
-            if (!fileHolder.sourceWrapper.hasMoreData && !canBeClosed(streamId, fileHolder)) {
-                if (addToPending(streamId)) {
-                    LOGGER.debug {
-                        "The ${fileHolder.path} file for stream $streamId cannot be closed yet and does not have any data. " +
-                            "Wait for the next read attempt"
+            try {
+                LOGGER.debug { "Refreshing file info for $streamId ($fileHolder)" }
+                fileHolder.refreshFileInfo()
+                if (fileHolder.truncated) {
+                    if (!configuration.allowFileTruncate) {
+                        throw TruncatedSourceException(streamId, fileHolder)
                     }
-                } else {
-                    LOGGER.trace {
-                        "The ${fileHolder.path} file for stream $streamId cannot be closed yet and still does not have any data. " +
-                            "Wait for the next read attempt"
-                    }
+                    LOGGER.info { "File ${fileHolder.path} was truncated. Start reading from the beginning" }
+                    fileHolder.reopen()
                 }
-                continue
-            }
+                LOGGER.debug { "Checking if can read from source for $streamId ($fileHolder)" }
+                if (!canReadRightNow(fileHolder, configuration.staleTimeout)) {
+                    if (addToPending(streamId)) {
+                        LOGGER.debug { "Cannot read $fileHolder right now. Wait for the next attempt" }
+                    } else {
+                        LOGGER.trace { "Still cannot read ${fileHolder.path} for stream $streamId. Wait for next attempt" }
+                    }
+                    continue
+                }
 
-            holdersByStreamId[streamId] = fileHolder
+                LOGGER.debug { "Checking if ${fileHolder.path} source can be closed for stream $streamId" }
+                if (!fileHolder.sourceWrapper.hasMoreData && !canBeClosed(streamId, fileHolder)) {
+                    if (addToPending(streamId)) {
+                        LOGGER.debug {
+                            "The ${fileHolder.path} file for stream $streamId cannot be closed yet and does not have any data. " +
+                                "Wait for the next read attempt"
+                        }
+                    } else {
+                        LOGGER.trace {
+                            "The ${fileHolder.path} file for stream $streamId cannot be closed yet and still does not have any data. " +
+                                "Wait for the next read attempt"
+                        }
+                    }
+                    continue
+                }
+
+                holdersByStreamId[streamId] = fileHolder
+            } catch (ex: RecoverableException) {
+                LOGGER.debug(ex) { "Recoverable exception for source $streamId (${fileHolder.path})" }
+                if (!fileHolder.supportRecovery) {
+                    throw ex
+                }
+                fileHolder.recoverSource()
+            }
         }
         removeFromPending(holdersByStreamId.keys)
         return holdersByStreamId

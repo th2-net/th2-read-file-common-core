@@ -17,8 +17,10 @@
 
 package com.exactpro.th2.read.file.common.impl
 
+import com.exactpro.th2.read.file.common.recovery.RecoverableException
 import com.exactpro.th2.read.file.common.recovery.RecoverableFileSourceWrapper
 import java.io.LineNumberReader
+import java.nio.charset.MalformedInputException
 
 /**
  * This implementation of [java.io.BufferedReader] wrapper allows the source to be recovered
@@ -27,6 +29,13 @@ import java.io.LineNumberReader
 class RecoverableBufferedReaderWrapper(
     source: LineNumberReader
 ) : BufferedReaderSourceWrapper<LineNumberReader>(source), RecoverableFileSourceWrapper<LineNumberReader> {
+
+    override val hasMoreData: Boolean
+        get() = try {
+            super.hasMoreData
+        } catch (ex: MalformedInputException) {
+            throw RecoverableException(ex)
+        }
 
     override fun recoverFrom(source: LineNumberReader): RecoverableFileSourceWrapper<LineNumberReader> {
         val lineNumber = this.source.lineNumber
