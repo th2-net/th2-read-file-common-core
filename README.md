@@ -1,4 +1,4 @@
-# Read file common core for common (1.5.1)
+# Read file common core for common (3.3.0)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 
@@ -22,21 +22,24 @@ NOTE: **the data should be appended to exactly the same file**.
 The base class for reader is `com.exactpro.th2.read.file.common.AbstractFileReader`.
 If you want to implement the reader with your custom logic you need to extend this class.
 
-However, there is a `com.exactpro.th2.read.file.common.impl.DefaultFileReader` class
+However, there is a `com.exactpro.th2.read.file.common.impl.TransportDefaultFileReader` class
 that provides you the ability to configure it with lambda expressions.
 If you don't need to store the state or use complex custom logic - this is your chose.
 
 ```kotlin
- val reader: AbstractFileReader<BufferedReader> = DefaultFileReader.Builder(
+ val reader: AbstractFileReader<BufferedReader, RawMessage.Builder, MessageId.Builder> = TransportDefaultFileReader.Builder(
             configuration,
             directoryChecker,
-            parser,
-            movedFileTracker,
+            contentParser,
+            fileTracker,
+            readerState,
+            messageIdSupplier,
         ) { _, path -> BufferedReaderSourceWrapper(Files.newBufferedReader(path)) }
             .readFileImmediately()
             .onStreamData(onStreamData)
-            .onError(onErrorAction)
+            .onSourceClosed(onSourceClosed)
             .acceptNewerFiles()
+            .setMessageFilters(messageFilters)
             .build()
 ```
 
@@ -139,6 +142,8 @@ until some messages will be actually sent.
 
  **NOTE**: If option `leaveLastFileOpen` is turned on means no flags will be generated because in this case the last message read from the file cannot be determinate
 
+Each message includes `th2.read.file_name` property with source file name.
+
 #### Metrics
 
 The common-read-core exports the following metrics:
@@ -170,6 +175,42 @@ The file will be dropped if its last modification time is less than **lastTimest
 
 ## Changes
 
+### 3.3.0
+
++ Migrate to th2 gradle plugin `0.0.6`
++ Updates:
+  + bom: `4.6.1`
+  + common: `5.11.0-dev`
+  + common-utils: `2.2.3-dev`
+  + grpc-common: `4.5.0-dev`
+
+### 3.2.0
+
++ Adds new property `th2.read.file_name` to each message.
+
+### 3.1.0
+
+#### Fixed:
+The next problems when transport mode is enabled 
+* IllegalStateException: Cannot set id after calling idBuilder()
+* IllegalStateException: Missing required properties: direction
+
+#### Updated:
+* common: `5.7.1-dev`
+
+### 3.0.0
+
+**Incompatible changes. Code migration is required**
+
++ th2 transport protocol support added
+
+### 2.0.0
+
+**Incompatible changes. Code migration is required**
+
++ Migrated to common for book & pages
+  + Added supplier for initial MessageID with prefilled data
+  
 ### 1.5.1
 
 + BOM updated from `4.0.2` to `4.1.0`

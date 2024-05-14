@@ -30,7 +30,7 @@ import java.util.concurrent.TimeUnit
 abstract class TestAbstractMovedFileTracker : AbstractFileTest() {
     @TempDir
     lateinit var dir: Path
-    lateinit var tracker: MovedFileTracker
+    private lateinit var tracker: MovedFileTracker
 
     @BeforeEach
     internal fun setUp() {

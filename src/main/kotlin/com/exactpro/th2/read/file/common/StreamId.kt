@@ -17,9 +17,6 @@
 
 package com.exactpro.th2.read.file.common
 
-import com.exactpro.th2.common.grpc.Direction
-
 data class StreamId(
-    val sessionAlias: String,
-    val direction: Direction
+    val sessionAlias: String
 )

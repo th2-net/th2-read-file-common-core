@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,12 +15,10 @@
  *
  */
 
-package com.exactpro.th2.read.file.common.extensions
+package com.exactpro.th2.read.file.common
 
-import com.google.protobuf.Timestamp
-import java.time.Instant
-
-
-fun Instant.toTimestamp(): Timestamp = run { Timestamp.newBuilder().setSeconds(epochSecond).setNanos(nano).build() }
-
-fun Timestamp.toInstant(): Instant = run { Instant.ofEpochSecond(seconds, nanos.toLong()) }
+interface FileReaderHelper<MESSAGE_BUILDER, ID_BUILDER> {
+    val messageFilters: Collection<ReadMessageFilter<MESSAGE_BUILDER>>
+    fun generateSequence(streamId: StreamId): Long
+    fun createMessageId(streamId: StreamId): ID_BUILDER
+}

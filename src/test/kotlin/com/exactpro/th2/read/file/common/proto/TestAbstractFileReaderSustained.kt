@@ -15,12 +15,11 @@
  *
  */
 
-package com.exactpro.th2.read.file.common
+package com.exactpro.th2.read.file.common.proto
 
 import com.exactpro.th2.common.grpc.RawMessage
-import com.exactpro.th2.read.file.common.AbstractFileReader.Companion.MESSAGE_STATUS_PROPERTY
+import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
-import com.exactpro.th2.read.file.common.extensions.toTimestamp
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
 import org.mockito.kotlin.any
@@ -30,7 +29,7 @@ import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.never
 import org.mockito.kotlin.timeout
 import org.mockito.kotlin.verify
-import org.mockito.kotlin.verifyZeroInteractions
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import strikt.api.expectThat
 import strikt.assertions.all
@@ -67,14 +66,17 @@ internal class TestAbstractFileReaderSustained : AbstractReaderTest() {
             .apply {
                 get(0).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 1")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isNull()
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isNull()
                 }
                 get(1).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 2")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isNull()
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isNull()
                 }
 
-                all { get { metadata }.get { id }.get { connectionId }.get { sessionAlias }.isEqualTo("A") }
+                all {
+                    get { metadata }.get { id }.get { connectionId }.get { sessionAlias }.isEqualTo("A")
+                    get { metadata }.get { propertiesMap }.get { get(FILE_NAME_PROPERTY_TEST) }.isEqualTo("A-0")
+                }
             }
     }
 
@@ -110,27 +112,33 @@ internal class TestAbstractFileReaderSustained : AbstractReaderTest() {
             .apply {
                 get(0).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 1")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isNull()
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isNull()
+                    get { metadata }.get { propertiesMap }.get { get(FILE_NAME_PROPERTY_TEST) }.isEqualTo("A-0")
                 }
                 get(1).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 2")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isNull()
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isNull()
+                    get { metadata }.get { propertiesMap }.get { get(FILE_NAME_PROPERTY_TEST) }.isEqualTo("A-0")
                 }
                 get(2).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 3")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isNull()
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isNull()
+                    get { metadata }.get { propertiesMap }.get { get(FILE_NAME_PROPERTY_TEST) }.isEqualTo("A-0")
                 }
                 get(3).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isNull()
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isNull()
+                    get { metadata }.get { propertiesMap }.get { get(FILE_NAME_PROPERTY_TEST) }.isEqualTo("A-1")
                 }
                 get(4).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 4")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isNull()
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isNull()
+                    get { metadata }.get { propertiesMap }.get { get(FILE_NAME_PROPERTY_TEST) }.isEqualTo("A-2")
                 }
                 get(5).run {
                     get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line 5")
-                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY) }.isNull()
+                    get { metadata }.get { propertiesMap }.get { get(MESSAGE_STATUS_PROPERTY_TEST) }.isNull()
+                    get { metadata }.get { propertiesMap }.get { get(FILE_NAME_PROPERTY_TEST) }.isEqualTo("A-2")
                 }
 
                 all { get { metadata }.get { id }.get { connectionId }.get { sessionAlias }.isEqualTo("A") }
@@ -143,7 +151,7 @@ internal class TestAbstractFileReaderSustained : AbstractReaderTest() {
             reader.processUpdates()
         }
 
-        verifyZeroInteractions(onStreamData)
+        verifyNoInteractions(onStreamData)
 
         // Wait enough time to trigger publication
         Thread.sleep(configuration.maxPublicationDelay.toMillis())
@@ -203,8 +211,8 @@ internal class TestAbstractFileReaderSustained : AbstractReaderTest() {
         val now = Instant.now()
         doReturn(
             listOf(
-                RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.toTimestamp() },
-                RawMessage.newBuilder().apply { metadataBuilder.timestamp = now.minusSeconds(1).toTimestamp() }
+                RawMessage.newBuilder().apply { metadataBuilder.idBuilder.timestamp = now.toTimestamp() },
+                RawMessage.newBuilder().apply { metadataBuilder.idBuilder.timestamp = now.minusSeconds(1).toTimestamp() }
             )
         ).whenever(parser).parse(any(), any())
 
@@ -228,7 +236,7 @@ internal class TestAbstractFileReaderSustained : AbstractReaderTest() {
             reader.processUpdates()
         }
 
-        verifyZeroInteractions(parser, onStreamData)
+        verifyNoInteractions(parser, onStreamData)
     }
 
     override fun createConfiguration(defaultStaleTimeout: Duration): CommonFileReaderConfiguration {

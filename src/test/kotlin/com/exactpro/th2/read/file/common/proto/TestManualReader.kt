@@ -15,11 +15,17 @@
  *
  */
 
-package com.exactpro.th2.read.file.common
+package com.exactpro.th2.read.file.common.proto
 
-import com.exactpro.th2.common.grpc.Direction
+import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.read.file.common.AbstractFileReader
+import com.exactpro.th2.read.file.common.AbstractFileTest
+import com.exactpro.th2.read.file.common.DirectoryChecker
+import com.exactpro.th2.read.file.common.MovedFileTracker
+import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
-import com.exactpro.th2.read.file.common.impl.DefaultFileReader
+import com.exactpro.th2.read.file.common.impl.ProtoDefaultFileReader
 import com.exactpro.th2.read.file.common.impl.LineParser
 import com.exactpro.th2.read.file.common.impl.RecoverableBufferedReaderWrapper
 import com.google.protobuf.TextFormat.shortDebugString
@@ -51,7 +57,7 @@ class TestManualReader : AbstractFileTest() {
     private val idExtractor: (Path) -> StreamId? = { path ->
         path.nameParts().let {
             if (it.size == 2) {
-                StreamId(it.first(), Direction.FIRST)
+                StreamId(it.first())
             } else {
                 null
             }
@@ -65,7 +71,7 @@ class TestManualReader : AbstractFileTest() {
         filter
     )
 
-    private lateinit var reader: AbstractFileReader<LineNumberReader>
+    private lateinit var reader: AbstractFileReader<LineNumberReader, RawMessage.Builder, MessageID>
     private lateinit var executor: ScheduledExecutorService
     private lateinit var future: Future<*>
 
@@ -81,11 +87,12 @@ class TestManualReader : AbstractFileTest() {
         Files.createDirectory(dir)
 
         val movedFileTracker = MovedFileTracker(dir)
-        reader = DefaultFileReader.Builder(
+        reader = ProtoDefaultFileReader.Builder(
             configuration,
             checker,
-            LineParser(),
+            LineParser(lineToBuilder = LineParser.PROTO),
             movedFileTracker,
+            messageIdSupplier = { MessageID.getDefaultInstance() },
         ) { _, path -> RecoverableBufferedReaderWrapper(LineNumberReader(Files.newBufferedReader(path))) }
             .readFileImmediately()
             .acceptNewerFiles()

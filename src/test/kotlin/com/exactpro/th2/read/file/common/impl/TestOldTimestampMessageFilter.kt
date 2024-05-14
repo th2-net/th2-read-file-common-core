@@ -17,11 +17,11 @@
 
 package com.exactpro.th2.read.file.common.impl
 
-import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.read.file.common.FilterFileInfo
 import com.exactpro.th2.read.file.common.StreamId
-import com.exactpro.th2.read.file.common.extensions.toTimestamp
+import com.exactpro.th2.read.file.common.state.ProtoContent
 import com.exactpro.th2.read.file.common.state.StreamData
 import com.google.protobuf.ByteString
 import org.junit.jupiter.api.Nested
@@ -34,7 +34,7 @@ import java.time.Duration
 import java.time.Instant
 
 internal class TestOldTimestampMessageFilter {
-    private val streamId = StreamId("test", Direction.FIRST)
+    private val streamId = StreamId("test")
 
     @Nested
     inner class Message {
@@ -95,7 +95,7 @@ internal class TestOldTimestampMessageFilter {
         private fun createBuilder(timestamp: Instant?, content: ByteString = ByteString.EMPTY) = RawMessage.newBuilder()
             .apply {
                 if (timestamp == null) return@apply
-                metadataBuilder.timestamp = timestamp.toTimestamp()
+                metadataBuilder.idBuilder.timestamp = timestamp.toTimestamp()
                 body = content
             }
     }
@@ -150,5 +150,5 @@ internal class TestOldTimestampMessageFilter {
         private fun createFileInfo(timestamp: Instant): FilterFileInfo = FilterFileInfo(Path.of("test"), timestamp, Duration.ofSeconds(1))
     }
 
-    private fun createStreamData(timestamp: Instant, content: ByteString = ByteString.EMPTY) = StreamData(timestamp, -1, content)
+    private fun createStreamData(timestamp: Instant, content: ByteString = ByteString.EMPTY) = StreamData(timestamp, -1, ProtoContent(content))
 }

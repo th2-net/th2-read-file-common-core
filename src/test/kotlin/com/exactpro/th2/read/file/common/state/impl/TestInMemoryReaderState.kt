@@ -17,13 +17,11 @@
 
 package com.exactpro.th2.read.file.common.state.impl
 
-import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.read.file.common.StreamId
+import com.exactpro.th2.read.file.common.state.ProtoContent
 import com.exactpro.th2.read.file.common.state.StreamData
 import com.google.protobuf.ByteString
 import org.junit.jupiter.api.Test
-
-import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import strikt.api.expect
@@ -43,7 +41,7 @@ internal class TestInMemoryReaderState {
     @ValueSource(booleans = [true, false])
     fun isFileProcessed(addToProcessed: Boolean) {
         val path = Path.of("test")
-        val streamId = StreamId("test", Direction.SECOND)
+        val streamId = StreamId("test")
         if (addToProcessed) {
             state.fileProcessed(streamId, path)
         }
@@ -55,7 +53,7 @@ internal class TestInMemoryReaderState {
     fun processedFileMoved() {
         val path = Path.of("test")
         val current = Path.of("test_moved")
-        val streamId = StreamId("test", Direction.SECOND)
+        val streamId = StreamId("test")
         state.fileProcessed(streamId, path)
 
         expect {
@@ -68,7 +66,7 @@ internal class TestInMemoryReaderState {
     @Test
     fun processedFilesRemoved() {
         val path = Path.of("test")
-        val streamId = StreamId("test", Direction.SECOND)
+        val streamId = StreamId("test")
         state.fileProcessed(streamId, path)
 
         expect {
@@ -80,25 +78,23 @@ internal class TestInMemoryReaderState {
 
     @Test
     fun isStreamIdExcluded() {
-        val streamId = StreamId("test", Direction.FIRST)
+        val streamId = StreamId("test")
         state.excludeStreamId(streamId)
 
         expect {
             that(state.isStreamIdExcluded(streamId)).isTrue()
-            that(state.isStreamIdExcluded(StreamId("test", Direction.SECOND))).isFalse()
         }
     }
 
     @Test
     fun `stores stream data`() {
-        val streamId = StreamId("test", Direction.SECOND)
-        val data = StreamData(Instant.now(), 42, ByteString.copyFromUtf8("A"))
+        val streamId = StreamId("test")
+        val data = StreamData(Instant.now(), 42, ProtoContent(ByteString.copyFromUtf8("A")))
 
         expect {
             that(state[streamId]).isNull()
             state[streamId] = data
             that(state[streamId]).isSameInstanceAs(data)
-            that(state[StreamId("test", Direction.FIRST)]).isNull()
         }
     }
 }

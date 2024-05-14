@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,10 @@
  *
  */
 
-package com.exactpro.th2.read.file.common
+package com.exactpro.th2.read.file.common.transport
 
-import com.exactpro.th2.common.grpc.Direction
-import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
+import com.exactpro.th2.read.file.common.StreamId
 import com.exactpro.th2.read.file.common.cfg.CommonFileReaderConfiguration
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
@@ -62,19 +62,19 @@ internal class TestSameFileForDifferentStreamsInFileReader : AbstractReaderTest(
         expect {
             val allBuilders = firstCaptor.allValues.flatten()
             that(allBuilders).hasSize(20)
-            that(allBuilders.filter { it.metadata.id.connectionId.sessionAlias == "A" })
+            that(allBuilders.filter { it.idBuilder().sessionAlias == "A" })
                 .hasSize(10)
                 .apply {
                     allIndexed { get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line ${it % 5}") }
 
-                    all { get { metadata }.get { id }.get { connectionId }.get { sessionAlias }.isEqualTo("A") }
+                    all { get { idBuilder() }.get { sessionAlias }.isEqualTo("A") }
                 }
-            that(allBuilders.filter { it.metadata.id.connectionId.sessionAlias == "B" })
+            that(allBuilders.filter { it.idBuilder().sessionAlias == "B" })
                 .hasSize(10)
                 .apply {
                     allIndexed { get { body }.get { toString(Charsets.UTF_8) }.isEqualTo("Line ${it % 5}") }
 
-                    all { get { metadata }.get { id }.get { connectionId }.get { sessionAlias }.isEqualTo("B") }
+                    all { get { idBuilder() }.get { sessionAlias }.isEqualTo("B") }
                 }
         }
     }
@@ -93,10 +93,10 @@ internal class TestSameFileForDifferentStreamsInFileReader : AbstractReaderTest(
             val name = path.fileName.toString()
             hashSetOf<StreamId>().apply {
                 if (name.contains('A') || name.contains('C')) {
-                    add(StreamId("A", Direction.SECOND))
+                    add(StreamId("A"))
                 }
                 if (name.contains('B') || name.contains('C')) {
-                    add(StreamId("B", Direction.SECOND))
+                    add(StreamId("B"))
                 }
             }
         }
