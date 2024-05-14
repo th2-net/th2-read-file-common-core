@@ -1,21 +1,10 @@
-buildscript {
-    repositories {
-        gradlePluginPortal()
-        maven {
-            url = "https://s01.oss.sonatype.org/content/repositories/snapshots/"
-        }
-    }
-    dependencies {
-        classpath "com.exactpro.th2:th2-gradle-plugin:0.0.1-dev-5915968839-41381e5-SNAPSHOT"
-    }
-}
-
 plugins {
-    id 'org.jetbrains.dokka' version '1.8.20'
+    id 'org.jetbrains.dokka' version '1.9.20'
+    id 'org.jetbrains.kotlin.jvm' version '1.8.22'
+    id 'java-library'
+    id 'maven-publish'
+    id 'com.exactpro.th2.gradle.publish' version '0.0.6'
 }
-
-apply plugin: "com.exactpro.th2.common-conventions"
-apply plugin: "com.exactpro.th2.artifacts-conventions"
 
 javadocJar {
     dependsOn(dokkaJavadoc)
@@ -23,10 +12,9 @@ javadocJar {
 }
 
 dependencies {
-    api platform('com.exactpro.th2:bom:4.5.0')
-    implementation "com.exactpro.th2:common:5.7.1-dev"
-    implementation "com.exactpro.th2:common-utils:2.2.0-dev"
-    api "com.exactpro.th2:grpc-common:4.3.0-dev"
+    implementation "com.exactpro.th2:common:5.11.0-dev"
+    implementation "com.exactpro.th2:common-utils:2.2.3-dev"
+    api "com.exactpro.th2:grpc-common:4.5.0-dev"
 
     implementation "com.google.guava:guava"
     implementation "org.apache.commons:commons-lang3"
@@ -42,8 +30,4 @@ test {
     testLogging {
         showStandardStreams = true
     }
-}
-
-dependencyLocking {
-    lockAllConfigurations()
 }

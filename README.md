@@ -1,4 +1,4 @@
-# Read file common core for common (3.2.0)
+# Read file common core for common (3.3.0)
 
 That is the core part for file reads written in Java or Kotlin. It provides the following functionality:
 
@@ -174,6 +174,15 @@ The message will be dropped if the current state for StreamId contains **lastTim
 The file will be dropped if its last modification time is less than **lastTimestamp** for current StreamID + **staleTimeout**.
 
 ## Changes
+
+### 3.3.0
+
++ Migrate to th2 gradle plugin `0.0.6`
++ Updates:
+  + bom: `4.6.1`
+  + common: `5.11.0-dev`
+  + common-utils: `2.2.3-dev`
+  + grpc-common: `4.5.0-dev`
 
 ### 3.2.0
 
