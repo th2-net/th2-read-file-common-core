@@ -1,42 +1,51 @@
-buildscript {
-    repositories {
-        gradlePluginPortal()
-        maven {
-            url = "https://s01.oss.sonatype.org/content/repositories/snapshots/"
-        }
-    }
-    dependencies {
-        classpath "com.exactpro.th2:th2-gradle-plugin:0.0.1-dev-5915968839-41381e5-SNAPSHOT"
-    }
-}
-
 plugins {
-    id 'org.jetbrains.dokka' version '1.8.20'
+    id 'org.jetbrains.kotlin.jvm' version '1.8.22'
+    id 'java-library'
+    id 'maven-publish'
+    id 'com.exactpro.th2.gradle.publish' version '0.0.6'
 }
 
-apply plugin: "com.exactpro.th2.common-conventions"
-apply plugin: "com.exactpro.th2.artifacts-conventions"
+repositories {
+    mavenCentral()
+    maven {
+        name 'Sonatype_snapshots'
+        url 'https://s01.oss.sonatype.org/content/repositories/snapshots/'
+    }
+    maven {
+        name 'Sonatype_releases'
+        url 'https://s01.oss.sonatype.org/content/repositories/releases/'
+    }
+    configurations.configureEach {
+        resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
+        resolutionStrategy.cacheDynamicVersionsFor 0, 'seconds'
+    }
+}
 
-javadocJar {
-    dependsOn(dokkaJavadoc)
-    from(dokkaJavadoc.outputDirectory)
+group = 'com.exactpro.th2'
+version = release_version
+
+kotlin {
+    jvmToolchain(11)
 }
 
 dependencies {
-    api platform('com.exactpro.th2:bom:4.5.0')
-    implementation "com.exactpro.th2:common:5.7.1-dev"
-    implementation "com.exactpro.th2:common-utils:2.2.0-dev"
-    api "com.exactpro.th2:grpc-common:4.3.0-dev"
+    implementation "com.exactpro.th2:common:5.11.0-dev"
+    implementation "com.exactpro.th2:common-utils:2.2.3-dev"
+    api "com.exactpro.th2:grpc-common:4.5.0-dev"
 
     implementation "com.google.guava:guava"
     implementation "org.apache.commons:commons-lang3"
+    implementation "io.github.microutils:kotlin-logging:3.0.5"
 
     implementation('io.prometheus:simpleclient') {
         because('performance metric for grafana')
     }
 
-    dokkaJavadocPlugin "org.jetbrains.dokka:kotlin-as-java-plugin"
+    testImplementation 'org.mockito.kotlin:mockito-kotlin:5.3.1'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testImplementation 'io.strikt:strikt-core:0.34.1'
 }
+
 
 test {
     testLogging {
@@ -44,6 +53,7 @@ test {
     }
 }
 
-dependencyLocking {
-    lockAllConfigurations()
+dependencyCheck {
+    suppressionFile = "suppressions.xml"
 }
+
