@@ -1,49 +1,33 @@
 plugins {
-    id 'org.jetbrains.kotlin.jvm' version '1.8.22'
-    id 'java-library'
-    id 'maven-publish'
-    id 'com.exactpro.th2.gradle.publish' version '0.0.6'
+    alias(libs.plugins.th2.publish)
+    alias(libs.plugins.kotlin.jvm)
+    id "java-library"
+    id "maven-publish"
 }
 
 repositories {
     mavenCentral()
-    maven {
-        name 'Sonatype_snapshots'
-        url 'https://s01.oss.sonatype.org/content/repositories/snapshots/'
-    }
-    maven {
-        name 'Sonatype_releases'
-        url 'https://s01.oss.sonatype.org/content/repositories/releases/'
-    }
-    configurations.configureEach {
-        resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
-        resolutionStrategy.cacheDynamicVersionsFor 0, 'seconds'
-    }
 }
 
 group = 'com.exactpro.th2'
 version = release_version
 
-kotlin {
-    jvmToolchain(11)
-}
-
 dependencies {
-    implementation "com.exactpro.th2:common:5.11.0-dev"
-    implementation "com.exactpro.th2:common-utils:2.2.3-dev"
-    api "com.exactpro.th2:grpc-common:4.5.0-dev"
+    api(libs.th2.grpc.common)
+    implementation(libs.th2.common)
+    implementation(libs.th2.common.utils)
 
     implementation "com.google.guava:guava"
     implementation "org.apache.commons:commons-lang3"
-    implementation "io.github.microutils:kotlin-logging:3.0.5"
+    implementation(libs.kotlin.logging)
 
     implementation('io.prometheus:simpleclient') {
         because('performance metric for grafana')
     }
 
-    testImplementation 'org.mockito.kotlin:mockito-kotlin:5.3.1'
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
-    testImplementation 'io.strikt:strikt-core:0.34.1'
+    testImplementation(libs.mockito.kotlin)
+    testImplementation(libs.junit.jupiter)
+    testImplementation(libs.strikt.core)
 }
 
 

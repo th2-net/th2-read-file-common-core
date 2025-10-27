@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2020-2025 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package com.exactpro.th2.read.file.common.proto
@@ -29,7 +28,7 @@ import com.exactpro.th2.read.file.common.impl.ProtoDefaultFileReader
 import com.exactpro.th2.read.file.common.impl.LineParser
 import com.exactpro.th2.read.file.common.impl.RecoverableBufferedReaderWrapper
 import com.google.protobuf.TextFormat.shortDebugString
-import mu.KotlinLogging
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.commons.lang3.RandomStringUtils
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -154,7 +153,7 @@ class TestManualReader : AbstractFileTest() {
                 if (Files.notExists(file)) {
                     Files.createFile(file)
                 }
-                appendTo(file, RandomStringUtils.randomAlphabetic(50, 100), lfInEnd = true)
+                appendTo(file, RandomStringUtils.insecure().nextAlphabetic(50, 100), lfInEnd = true)
                 data.lineAdded(linePerFileLimit)
             }
             Thread.sleep(random.nextLong(10, 100))
@@ -172,7 +171,7 @@ class TestManualReader : AbstractFileTest() {
         val linesPerFile = 100
         repeat(1000) {
             linesInFile++
-            appendTo(logFile, "log-line-$it:${RandomStringUtils.randomAlphabetic(50, 100)}", lfInEnd = true)
+            appendTo(logFile, "log-line-$it:${RandomStringUtils.insecure().nextAlphabetic(50, 100)}", lfInEnd = true)
             if (linesInFile >= linesPerFile) {
                 linesInFile = 0
                 for (copyIndex in copy downTo 1) {
