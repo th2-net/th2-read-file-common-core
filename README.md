@@ -178,7 +178,7 @@ The file will be dropped if its last modification time is less than **lastTimest
 ### 3.4.0
 
 + Updated:
-  + th2 gradle plugin: `0.3.9` (bom: `4.14.1`)
+  + th2 gradle plugin: `0.3.10` (bom: `4.14.2`)
   + kotlin: `2.2.0`
   + common: `5.16.1-dev`
   + grpc-common: `4.7.2`
