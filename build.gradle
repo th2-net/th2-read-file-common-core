@@ -13,6 +13,7 @@ group = 'com.exactpro.th2'
 version = release_version
 
 dependencies {
+    api(platform(libs.th2.bom)) // TODO: remove after update th2.grpc.common
     api(libs.th2.grpc.common)
     implementation(libs.th2.common)
     implementation(libs.th2.common.utils)
