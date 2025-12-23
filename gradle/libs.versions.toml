@@ -15,5 +15,5 @@ mockito-kotlin = { group = "org.mockito.kotlin", name = "mockito-kotlin", versio
 strikt-core = { group = "io.strikt", name = "strikt-core", version = "0.34.1" }
 
 [plugins]
-th2-publish = { id = "com.exactpro.th2.gradle.publish", version = "0.3.10" }
+th2-publish = { id = "com.exactpro.th2.gradle.publish", version = "0.3.11" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
